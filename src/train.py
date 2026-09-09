@@ -120,8 +120,7 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device) -> No
     """Train the model for one epoch."""
     model.train()
     for step, batch in enumerate(loader): 
-        if step % 50 == 0:
-                print(f"  step {step}/{len(loader)} loss={loss.item():.4f}")  
+
         enc = {k: v.to(device) for k, v in batch["enc"].items() if k != "labels"}
         # labels go to the device here, because the loss is computed on-device.
         labels = batch["enc"]["labels"].to(device)
@@ -135,6 +134,10 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device) -> No
 
         # compute the loss using the logits and the true labels
         loss = loss_fn(logits, labels)
+
+        if step % 50 == 0:
+            print(f"  step {step}/{len(loader)} loss={loss.item():.4f}")  
+
 
         # backpropagate the gradients: computing the gradients of the loss with respect to the model parameters.
         loss.backward()
