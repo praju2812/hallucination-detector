@@ -1,0 +1,41 @@
+# Base config for the supervised hallucination detector.
+#
+# The whole point of this file: the model is niche-agnostic. To move from the
+# general training set to a niche evaluation set later, you change paths here,
+# not code. Train on RAGTruth/HaluEval now; drop in the niche dataset as a
+# held-out test set once your supervisor signs off on the topic.
+
+model:
+  name: "answerdotai/ModernBERT-base"
+  max_length: 1024      # covers p95 (1006); truncates only ~5% instead of 21%
+  dropout: 0.1
+  resp_max: 384        # max length of the response (answer) to keep; rest is truncated
+  
+# These files are the output of your Phase 1 (unified schema + group-based splits).
+# Point them at whatever you already built. Column names are parametrised below
+# so this loader matches your schema instead of forcing a schema on you.
+data:
+  train_path: "data/unified/train.jsonl"
+  val_path:   "data/unified/val.jsonl"
+  test_path:  "data/unified/test.jsonl"
+  context_col:  "context"      # retrieved passage(s) the answer is meant to be grounded in
+  response_col: "answer"     # the LLM answer being judged
+  label_col:    "label"        # 1 = hallucinated / unfaithful, 0 = faithful
+  dataset_col:  "source"       # e.g. "ragtruth" / "halueval" -> for per-source breakdown at eval
+
+train:
+  epochs: 3
+  batch_size: 4
+  lr: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+  # RAGTruth is ~30% positive, so the classes are imbalanced. pos_weight up-weights
+  # the positive (hallucinated) class in BCE. Start near (neg/pos); tune on val.
+  pos_weight: 2.3
+  seed: 42
+  eval_every_epoch: true
+  # Model selection metric. PR-AUC, not accuracy: accuracy is misleading under imbalance.
+  select_on: "pr_auc"
+  out_dir: "checkpoints"
+  test_out_dir: "checkpoints/test_results"

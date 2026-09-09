@@ -1,0 +1,31 @@
+# test config for the supervised hallucination detector.
+
+model:
+  name: "answerdotai/ModernBERT-base"
+  max_length: 256     
+  dropout: 0.1
+  resp_max: 384        
+
+
+data:
+  train_path: "data/unified/tiny.jsonl"
+  val_path:   "data/unified/tiny.jsonl"
+  test_path:  "data/unified/test.jsonl"
+  context_col:  "context"      
+  response_col: "answer"    
+  label_col:    "label"        
+  dataset_col:  "source"      
+
+train:
+  epochs: 30
+  batch_size: 4
+  lr: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+  pos_weight: 1.0
+  seed: 42
+  eval_every_epoch: true
+  select_on: "pr_auc"
+  out_dir: "checkpoints"
+  test_out_dir: "checkpoints/test_results"
