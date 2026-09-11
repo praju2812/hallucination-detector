@@ -54,12 +54,15 @@ def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
 
     #  The DataLoader is a PyTorch utility that provides an iterable over the dataset. 
     # It handles batching, shuffling, and loading data in parallel using multiprocessing workers.
+
     return DataLoader(
         ds,
         batch_size=cfg["train"]["batch_size"],
         shuffle=shuffle,
         collate_fn=collate,
         generator=generator,
+        num_workers=2,#two subprocesses will be used to load the data in parallel
+        pin_memory=True,#data loader will copy Tensors into CUDA pinned memory before returning
     )
 
 def build_optimizer_and_scheduler(model, cfg: dict, steps_per_epoch: int):
@@ -116,7 +119,7 @@ def evaluate(model, loader, device):
         all_sources.extend(batch["sources"])    
     return np.array(all_labels), np.array(all_probs), all_sources
 
-def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device) -> None:
+def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scaler) -> None:
     """Train the model for one epoch."""
     model.train()
     for step, batch in enumerate(loader): 
@@ -129,25 +132,29 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device) -> No
         # This is necessary because by default, gradients are accumulated in PyTorch.
         optim.zero_grad()
 
-        # logits returns the raw output of the model (before applying softmax or sigmoid).
-        logits = model(**enc)
+        # autocast runs the forward and loss in fp16 where safe, fp32 where not
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
+        
+            # logits returns the raw output of the model (before applying softmax or sigmoid).
+            logits = model(**enc)
 
-        # compute the loss using the logits and the true labels
-        loss = loss_fn(logits, labels)
+            # compute the loss using the logits and the true labels
+            loss = loss_fn(logits, labels)
 
         if step % 50 == 0:
             print(f"  step {step}/{len(loader)} loss={loss.item():.4f}")  
 
+        # scaler multiplies the loss up before backward so fp16 grads don't underflow
+        scaler.scale(loss).backward()
 
-        # backpropagate the gradients: computing the gradients of the loss with respect to the model parameters.
-        loss.backward()
-
+        # unscale before clipping, or we clip the scaled-up gradients
+        scaler.unscale_(optim)
         # clip the gradients to prevent exploding gradients
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg["train"]["max_grad_norm"])
 
-        # update the model parameters using the optimizer 
-        optim.step()
-        # update the learning rate scheduler
+        # scaler.step checks for inf/nan, skips the update if found, then adjusts scale
+        scaler.step(optim)
+        scaler.update()
         scheduler.step()
  
 
@@ -216,11 +223,13 @@ def train(cfg: dict) -> None:
     model = HallucinationDetector(cfg["model"]["name"], cfg["model"]["dropout"]).to(device)
     loss_fn = build_loss(cfg["train"]["pos_weight"]).to(device)
     optim, scheduler = build_optimizer_and_scheduler(model, cfg, steps_per_epoch=len(train_loader))
+    scaler = torch.amp.GradScaler()
+
  
     os.makedirs(cfg["train"]["out_dir"], exist_ok=True)
     best_score = -1.0
     for epoch in range(cfg["train"]["epochs"]):
-        train_one_epoch(model, train_loader, loss_fn, optim, scheduler, cfg, device)
+        train_one_epoch(model, train_loader, loss_fn, optim, scheduler, cfg, device, scaler)
         best_score = validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch)             
     evaluate_on_test(model, val_loader, test_loader, cfg, device)
 
