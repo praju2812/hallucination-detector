@@ -224,3 +224,5 @@ checkpoints/
 *.pyc
 data/raw/
 .vscode/
+best-v1/
+best-v2/

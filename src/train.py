@@ -159,10 +159,29 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scale
  
 
 def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch):
-    """Score on validation; save the checkpoint if it's the best so far."""
+    """
+    Score the ragtruth validation set
+    save the checkpoint if it's the best so far.
+    """
 
     # evaluate the model on the validation set and compute the ranking metrics (PR-AUC and ROC-AUC).
-    labels, probs, _ = evaluate(model, val_loader, device)
+
+    # extract the labels, probabilities, and sources from the evaluation results.
+    labels, probs, sources = evaluate(model, val_loader, device)
+
+    # filter the data to only ragtruth sources since ragtruth is the main source of hallucination data. 
+    
+    # boolean mask that is True for ragtruth sources and False otherwise.
+    ragtruth_mask = np.array([s == "ragtruth" for s in sources])
+
+    if ragtruth_mask.sum() == 0: 
+        raise ValueError("no ragtruth rows in validation")
+
+    # apply the mask to the labels and probabilities since index is same for labels, probs and sources.
+    labels = labels[ragtruth_mask]
+    probs = probs[ragtruth_mask]
+
+    # rank the metrics using the ranking_metrics function, which computes PR-AUC and ROC-AUC.
     val = ranking_metrics(labels, probs)
     print(f"[epoch {epoch}] val pr_auc={val['pr_auc']:.4f} roc_auc={val['roc_auc']:.4f}")
 
@@ -172,6 +191,7 @@ def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epo
         print(f"  saved best ({cfg['train']['select_on']}={score:.4f})")
         return score
 
+    # return the best score for ragtruth so far, whether it was updated or not.
     return best_score
 
 def evaluate_on_test(model, val_loader, test_loader, cfg, device) -> None:
@@ -182,13 +202,21 @@ def evaluate_on_test(model, val_loader, test_loader, cfg, device) -> None:
     model.load_state_dict(torch.load(best_path, map_location=device))
 
     # evaluate the model on the validation set to get the labels and probabilities
-    v_labels, v_probs, _ = evaluate(model, val_loader, device)
+    v_labels, v_probs, v_sources = evaluate(model, val_loader, device)
 
-    # find the best threshold on the validation set
+    # filter the data to only ragtruth sources since ragtruth is the main source of hallucination data.
+    ragtruth_mask = np.array([s == "ragtruth" for s in v_sources])
+
+    if ragtruth_mask.sum() == 0: 
+        raise ValueError("no ragtruth rows in validation")
+    
+    v_labels = v_labels[ragtruth_mask]
+    v_probs = v_probs[ragtruth_mask]
+
+    # find the best threshold on the validation set of ragtruth data that maximizes the F1 score.
     thr = best_threshold(v_labels, v_probs)
 
-
-    # evaluate the model on the test set to get the labels and probabilities
+    # evaluate the model on the test set to get the labels and probabilities and sources.
     t_labels, t_probs, t_sources = evaluate(model, test_loader, device)
 
     # compute the ranking metrics (PR-AUC and ROC-AUC) and thresholded metrics (precision, recall, F1) at the chosen threshold on the test set.
