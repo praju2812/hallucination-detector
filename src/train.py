@@ -144,18 +144,22 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scale
         if step % 50 == 0:
             print(f"  step {step}/{len(loader)} loss={loss.item():.4f}")  
 
-        # scaler multiplies the loss up before backward so fp16 grads don't underflow
+        # scales the loss to prevent underflow in fp16
         scaler.scale(loss).backward()
-
-        # unscale before clipping, or we clip the scaled-up gradients
+        # unscales the gradients of the optimizer's assigned params in-place
         scaler.unscale_(optim)
-        # clip the gradients to prevent exploding gradients
+        # clips the gradients of the model's parameters to prevent exploding gradients
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg["train"]["max_grad_norm"])
 
-        # scaler.step checks for inf/nan, skips the update if found, then adjusts scale
+        # get the current scale before stepping the optimizer, so we can check if it changed after the step
+        scale_before = scaler.get_scale()
         scaler.step(optim)
         scaler.update()
-        scheduler.step()
+
+        # only advance the LR schedule if the optimizer actually stepped
+        # (scaler lowers the scale when it skips a step due to inf/nan)
+        if scaler.get_scale() >= scale_before:
+            scheduler.step()
  
 
 def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch):

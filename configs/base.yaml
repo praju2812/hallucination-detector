@@ -24,7 +24,7 @@ data:
   dataset_col:  "source"       # e.g. "ragtruth" / "halueval" -> for per-source breakdown at eval
 
 train:
-  epochs: 2
+  epochs: 5
   batch_size: 8
   lr: 2.0e-5
   weight_decay: 0.01
