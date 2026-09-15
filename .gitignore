@@ -226,3 +226,5 @@ data/raw/
 .vscode/
 best-v1/
 best-v2/
+best-epochs5/
+best-onlyragtruth/
