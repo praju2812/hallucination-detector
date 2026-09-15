@@ -48,8 +48,8 @@ def load_config(path: str) -> dict:
 
 
 def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
-                generator: torch.Generator | None = None) -> DataLoader:
-    ds = HallucinationDataset(path, cfg["data"])
+                generator: torch.Generator | None = None, sources: list | None = None) -> DataLoader:
+    ds = HallucinationDataset(path, cfg["data"], sources=sources)
     collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"])
 
     #  The DataLoader is a PyTorch utility that provides an iterable over the dataset. 
@@ -248,7 +248,7 @@ def train(cfg: dict) -> None:
     tokenizer = build_tokenizer(cfg["model"]["name"])
     gen = torch.Generator().manual_seed(cfg["train"]["seed"])  # reproducible shuffle
    
-    train_loader = make_loader(cfg["data"]["train_path"], cfg, tokenizer, shuffle=True, generator=gen)
+    train_loader = make_loader(cfg["data"]["train_path"], cfg, tokenizer, shuffle=True, generator=gen, sources=cfg["train"].get("train_sources"))
     val_loader = make_loader(cfg["data"]["val_path"], cfg, tokenizer, shuffle=False)
     test_loader = make_loader(cfg["data"]["test_path"], cfg, tokenizer, shuffle=False)
  

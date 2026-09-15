@@ -3,11 +3,13 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
-from src.data import HallucinationDataset, build_tokenizer
 import numpy as np
 
 from src.data import HallucinationDataset  # or read source_info directly
 from utils.io import read_jsonl
+from src.encoding import build_tokenizer
+import yaml
+
 
 
 qa = [s for s in read_jsonl("data/raw/RAGTruth/dataset/source_info.jsonl")
@@ -42,3 +44,9 @@ with open("data/unified/train.jsonl", encoding="utf-8") as f:
 
 lengths = [len(tok(r["answer"], add_special_tokens=False)["input_ids"]) for r in rows]
 print(np.percentile(lengths, [50, 90, 95, 99]), max(lengths))
+
+cfg = yaml.safe_load(open("configs/base.yaml"))
+full = HallucinationDataset("data/unified/train.jsonl", cfg["data"])
+filt = HallucinationDataset("data/unified/train.jsonl", cfg["data"], sources=["ragtruth"])
+print("full:", len(full), "ragtruth-only:", len(filt))
+print("sources in filtered:", set(r[cfg["data"]["dataset_col"]] for r in filt.rows))

@@ -21,7 +21,7 @@ from utils.io import read_jsonl
 class HallucinationDataset(Dataset):
     """Holds raw rows. Tokenisation happens in the collator for dynamic padding."""
 
-    def __init__(self, path: str, cfg_data: dict):
+    def __init__(self, path: str, cfg_data: dict,sources: list | None = None):
         """
         Initialise the dataset.
         Store the raw rows and the column names for context, response, label, and source.
@@ -30,7 +30,10 @@ class HallucinationDataset(Dataset):
             path: Path to the JSONL file containing the data.
             cfg_data: Configuration dictionary with schema mapping.
         """
+        
         self.rows = read_jsonl(path)
+        if sources is not None:
+            self.rows = [r for r in self.rows if r[cfg_data["dataset_col"]] in sources]
         self.context = cfg_data["context_col"]
         self.response = cfg_data["response_col"]
         self.label = cfg_data["label_col"]
