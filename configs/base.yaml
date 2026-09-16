@@ -39,4 +39,3 @@ train:
   # Model selection metric. PR-AUC, not accuracy: accuracy is misleading under imbalance.
   select_on: "pr_auc"
   out_dir: "checkpoints"
-  test_out_dir: "checkpoints/test_results"
