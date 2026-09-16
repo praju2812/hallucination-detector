@@ -8,16 +8,17 @@ Run:  python -m src.train --config configs/base.yaml
 
 from __future__ import annotations
 import argparse
+from datetime import datetime
 import os
 import random
 import json
+import subprocess
 
 import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
-from yaml import loader
 
 from src.data import HallucinationDataset
 from src.encoding import Collator, build_tokenizer
@@ -45,6 +46,25 @@ def load_config(path: str) -> dict:
     """Load the base.yaml configuration file."""
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+# run_dir is the directory where the model checkpoints and logs will be saved.
+# It is created based on the current timestamp and the random seed.
+def make_run_dir(cfg: dict) -> str:
+    seed = cfg["train"]["seed"]
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(cfg["train"]["out_dir"], f"run_seed{seed}_{stamp}")
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
+def get_git_sha() -> str:
+    try:
+        # subprocess.check_output runs the git command to get the current commit hash (SHA) of the repository.
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        return "unknown"
 
 
 def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
@@ -162,7 +182,7 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scale
             scheduler.step()
  
 
-def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch):
+def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch, run_dir):
     """
     Score the ragtruth validation set
     save the checkpoint if it's the best so far.
@@ -191,18 +211,17 @@ def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epo
 
     score = val[cfg["train"]["select_on"]]
     if score > best_score:
-        torch.save(model.state_dict(), os.path.join(cfg["train"]["out_dir"], "best.pt"))
+        torch.save(model.state_dict(), os.path.join(run_dir, "best.pt"))
         print(f"  saved best ({cfg['train']['select_on']}={score:.4f})")
-        return score
+        return score, val
 
-    # return the best score for ragtruth so far, whether it was updated or not.
-    return best_score
+    return best_score, val
 
-def evaluate_on_test(model, val_loader, test_loader, cfg, device) -> None:
+def evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir) -> None:
     """Reload the best checkpoint, pick a threshold on val, report on test."""
 
     # get the best checkpoint from the output directory and load it into the model.
-    best_path = os.path.join(cfg["train"]["out_dir"], "best.pt")
+    best_path = os.path.join(run_dir, "best.pt")
     model.load_state_dict(torch.load(best_path, map_location=device))
 
     # evaluate the model on the validation set to get the labels and probabilities
@@ -230,12 +249,16 @@ def evaluate_on_test(model, val_loader, test_loader, cfg, device) -> None:
 
     # calling per_source_breakdown on test set to get metrics for each source (e.g., ragtruth, halueval, etc.) at the best threshold.
     per_source = per_source_breakdown(t_labels, t_probs, t_sources, thr)
-    os.makedirs(cfg["train"]["test_out_dir"], exist_ok=True)
-    for source, metrics in per_source.items():
-        print(f"  {source}: {metrics}")
-        out = os.path.join(cfg["train"]["test_out_dir"], f"test_{source}.json")
-        with open(out, "w") as f:
-            json.dump(metrics, f, indent=2)
+    
+    summary = {
+    "threshold": thr,
+    "overall": test,
+    "per_source": per_source,
+    "git_sha": get_git_sha(),
+    "seed": cfg["train"]["seed"],
+    }
+    with open(os.path.join(run_dir, "metrics.json"), "w") as f:
+        json.dump(summary, f, indent=2)
 
 def train(cfg: dict) -> None:
     """
@@ -244,6 +267,13 @@ def train(cfg: dict) -> None:
     set_seed(cfg["train"]["seed"])
     device = get_device()
     print(f"device: {device}")
+
+    run_dir = make_run_dir(cfg)
+    print(f"run_dir: {run_dir}")
+
+    # snapshot the exact config and git SHA that produced this run
+    with open(os.path.join(run_dir, "config_snapshot.json"), "w") as f:
+        json.dump({"config": cfg, "git_sha": get_git_sha()}, f, indent=2)
 
     tokenizer = build_tokenizer(cfg["model"]["name"])
     gen = torch.Generator().manual_seed(cfg["train"]["seed"])  # reproducible shuffle
@@ -257,19 +287,28 @@ def train(cfg: dict) -> None:
     optim, scheduler = build_optimizer_and_scheduler(model, cfg, steps_per_epoch=len(train_loader))
     scaler = torch.amp.GradScaler()
 
- 
-    os.makedirs(cfg["train"]["out_dir"], exist_ok=True)
     best_score = -1.0
+    val_history = []
     for epoch in range(cfg["train"]["epochs"]):
         train_one_epoch(model, train_loader, loss_fn, optim, scheduler, cfg, device, scaler)
-        best_score = validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch)             
-    evaluate_on_test(model, val_loader, test_loader, cfg, device)
+        best_score, val = validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch, run_dir)
+        val_history.append({"epoch": epoch, **val})
+
+    with open(os.path.join(run_dir, "val_history.json"), "w") as f:
+        json.dump(val_history, f, indent=2)
+        
+    evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir)
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/base.yaml")
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
-    train(load_config(args.config))
+    cfg = load_config(args.config)
+    if args.seed is not None:
+        cfg["train"]["seed"] = args.seed
+    train(cfg)
 
 
 if __name__ == "__main__":
