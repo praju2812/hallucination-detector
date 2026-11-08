@@ -94,10 +94,15 @@ def metric(m, names=("pr_auc", "prauc", "average_precision", "ap")):
 
 
 def test_block(metrics):
-    """Accept {"test": {src: {...}}} or {src: {...}} at top level."""
+    """Per-source test metrics. Accepts {"per_source": {src: {...}}} (src/train.py format),
+    {"test": {src: {...}}} or {src: {...}} at top level. Never returns the blended "overall"."""
     if not isinstance(metrics, dict):
         return {}
+    if isinstance(metrics.get("per_source"), dict):
+        return {k: v for k, v in metrics["per_source"].items() if isinstance(v, dict)}
     t = metrics.get("test", metrics)
+    if isinstance(t, dict):
+        t = {k: v for k, v in t.items() if k != "overall"}
     return {k: v for k, v in t.items() if isinstance(v, dict)} if isinstance(t, dict) else {}
 
 
@@ -226,12 +231,24 @@ def scan_runs(extra_dirs):
     return runs
 
 
+def data_paths(snap):
+    """data_dir if recorded, else the train/val/test paths src/train.py already snapshots."""
+    vals = [find_key(snap, k) for k in ("data_dir", "data_dirs", "train_path", "val_path", "test_path")]
+    flat = []
+    for v in vals:
+        if isinstance(v, list):
+            flat += [str(x) for x in v]
+        elif v:
+            flat.append(str(v))
+    return " ".join(flat)
+
+
 def classify(snap, require_query=True):
     exp = find_key(snap, "experiment")
     if exp:
         return str(exp), False
-    dd = find_key(snap, "data_dir") or find_key(snap, "data_dirs") or ""
-    dd = " ".join(dd) if isinstance(dd, list) else str(dd)
+    dd = find_key(snap, "train_path") or find_key(snap, "data_dir") or find_key(snap, "data_dirs") or ""
+    dd = " ".join(map(str, dd)) if isinstance(dd, list) else str(dd)
     gen, clin = "unified" in dd, "clinical" in dd
     if gen and clin:
         return "G+C", True
@@ -244,12 +261,14 @@ def classify(snap, require_query=True):
 
 def run_valid(snap, require_query):
     ml = find_key(snap, "max_length")
-    dd = str(find_key(snap, "data_dir") or find_key(snap, "data_dirs") or "")
+    dd = data_paths(snap)
     problems = []
     if ml != EXPECTED_MAX_LENGTH:
         problems.append(f"max_length={ml}")
-    if require_query and "unified" in dd and "unified_v2" not in dd:
+    if require_query and "unified/" in dd and "unified_v2" not in dd:
         problems.append("old input format (data/unified)")
+    if "tiny" in dd:
+        problems.append("tiny smoke-test data")
     return problems
 
 
@@ -285,7 +304,7 @@ def check_runs(extra_dirs, require_query):
         r["problems"] = run_valid(r["snap"], require_query)
         r["has_test"] = bool(test_block(r["metrics"]))
         groups.setdefault(exp, []).append(r)
-        say("INFO", f"{r['dir'].name}: exp={exp}{' (inferred from data_dir)' if inferred else ''}, "
+        say("INFO", f"{r['dir'].name}: exp={exp}{' (inferred from data paths)' if inferred else ''}, "
                     f"seed={find_key(r['snap'], 'seed')}, sha={str(find_key(r['snap'], 'git_sha'))[:8]}, "
                     f"test metrics={'yes' if r['has_test'] else 'no'}"
                     + (f", INVALID: {'; '.join(r['problems'])}" if r["problems"] else ""))
