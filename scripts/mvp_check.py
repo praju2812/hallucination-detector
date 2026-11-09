@@ -20,11 +20,11 @@ Status: PASS | NOT YET | DIFFERS (needs a look) | MISSING (could not check, reas
 PATH CONVENTIONS for artefacts that do not exist yet. Change them here if you prefer others;
 the point is that "done" is defined before the work starts.
 """
-import argparse, ast, hashlib, json, os, re, statistics, subprocess, sys
+import argparse, ast, gzip, hashlib, json, os, re, statistics, subprocess, sys
 from pathlib import Path
 
 GENERAL_V1 = Path("data/unified")          # existing; your earlier validation findings used it
-GENERAL_V2 = Path("data/unified_v2")       # with the query field (Task 1)
+GENERAL_V2 = Path("data/unified_v2")       # with the query field
 CLINICAL = Path("data/clinical")           # proposed: train/val/test.jsonl, same schema as unified
 RQ1_DIR = Path("results/rq1")              # proposed: one json per G seed, {"seed":..,"test":{source:{metrics}}}
 NLI_DIR = Path("results/nli")              # proposed: {"test":{source:{metrics}}}
@@ -54,16 +54,20 @@ def clinical_key(source):
 
 
 def read_jsonl(path):
-    with open(path) as f:
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
 
 def load_splits(d):
     out = {}
     for sp in SPLITS:
-        p = d / f"{sp}.jsonl"
-        if p.exists():
-            out[sp] = read_jsonl(p)
+        for name in (f"{sp}.jsonl", f"{sp}.jsonl.gz"):      # plain or gzip-compressed
+            p = d / name
+            if p.exists():
+                if sp in out:
+                    raise ValueError(f"both {sp}.jsonl and {sp}.jsonl.gz in {d}: keep one")
+                out[sp] = read_jsonl(p)
     return out
 
 
@@ -378,7 +382,7 @@ def check_m2():
     for name in SPLITS:
         rows = sp.get(name, [])
         if not rows:
-            say("MISSING", f"{CLINICAL}/{name}.jsonl")
+            say("MISSING", f"{CLINICAL}/{name}.jsonl(.gz)")
             ok = False
             continue
         missing = [c for c in SCHEMA if c not in rows[0]]
