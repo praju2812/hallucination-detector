@@ -34,6 +34,7 @@ class HallucinationDataset(Dataset):
         self.rows = read_jsonl(path)
         if sources is not None:
             self.rows = [r for r in self.rows if r[cfg_data["dataset_col"]] in sources]
+        self.query = cfg_data["query_col"]
         self.context = cfg_data["context_col"]
         self.response = cfg_data["response_col"]
         self.label = cfg_data["label_col"]
@@ -46,7 +47,7 @@ class HallucinationDataset(Dataset):
     def __getitem__(self, i: int) -> dict[str, Any]:
         """
         Get the i-th example from the dataset.
-        Returns a dictionary with keys: 'context', 'response', 'label', and 'source'.
+        Returns a dictionary with keys: 'query', 'context', 'response', 'label', and 'source'.
         """
         r = self.rows[i]
 
@@ -56,6 +57,7 @@ class HallucinationDataset(Dataset):
             context = "\n\n".join(context)
 
         return {
+            "query": r[self.query],
             "context": context,
             "response": r[self.response],
             "label": float(r[self.label]),

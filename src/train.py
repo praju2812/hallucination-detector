@@ -16,12 +16,13 @@ import subprocess
 
 import numpy as np
 import torch
+import transformers
 import yaml
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
 from src.data import HallucinationDataset
-from src.encoding import Collator, build_tokenizer
+from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
 from src.model import HallucinationDetector, build_loss
 from src.metrics import per_source_breakdown, probs_from_logits, ranking_metrics, best_threshold, thresholded_metrics
 
@@ -65,6 +66,26 @@ def get_git_sha() -> str:
         ).strip()
     except Exception:
         return "unknown"
+
+
+EXPERIMENTS = ("G", "C", "G+C")
+
+
+def build_run_snapshot(cfg: dict) -> dict:
+    """Everything needed to say which data, format and library versions produced a run.
+    Written to config_snapshot.json. `experiment` comes from the config's top-level `experiment` key."""
+    experiment = cfg.get("experiment")
+    if experiment not in EXPERIMENTS:
+        raise ValueError(f"config 'experiment' must be one of {EXPERIMENTS}, got {experiment!r}")
+    return {
+        "config": cfg,                      # includes data paths
+        "seed": cfg["train"]["seed"],
+        "git_sha": get_git_sha(),
+        "experiment": experiment,
+        "input_format": INPUT_FORMAT,
+        "torch_version": torch.__version__,
+        "transformers_version": transformers.__version__,
+    }
 
 
 def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
@@ -268,12 +289,14 @@ def train(cfg: dict) -> None:
     device = get_device()
     print(f"device: {device}")
 
+    # built before the run dir, so a bad `experiment` fails without leaving an empty folder
+    snapshot = build_run_snapshot(cfg)
     run_dir = make_run_dir(cfg)
     print(f"run_dir: {run_dir}")
 
-    # snapshot the exact config and git SHA that produced this run
+    # snapshot the exact config, git SHA, experiment, input format and versions that produced this run
     with open(os.path.join(run_dir, "config_snapshot.json"), "w") as f:
-        json.dump({"config": cfg, "git_sha": get_git_sha()}, f, indent=2)
+        json.dump(snapshot, f, indent=2)
 
     tokenizer = build_tokenizer(cfg["model"]["name"])
     gen = torch.Generator().manual_seed(cfg["train"]["seed"])  # reproducible shuffle

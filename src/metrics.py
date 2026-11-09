@@ -58,6 +58,10 @@ def per_source_breakdown(labels, probs, sources, threshold):
         # skip sources with no examples (e.g., niche set in the unified train set)
         if m.sum() == 0:
             continue
+        
+        # labels arrive as floats (BCE)
+        if not np.all(np.isin(labels[m], [0, 1])):
+            raise ValueError(f"labels for source {s} are not binary: {np.unique(labels[m])}")
 
         # compute metrics for this source
         row = ranking_metrics(labels[m], probs[m])
@@ -66,6 +70,13 @@ def per_source_breakdown(labels, probs, sources, threshold):
 
         # add the number of examples from this source to the row
         row["n"] = int(m.sum())
+
+        # add row["n_pos"], the number of positive (label 1) rows
+        # for this source, so prevalence = n_pos / n can be shown next to PR-AUC.
+        
+        # sum the labels for this source to get the number of positive examples
+        row["n_pos"] = int(labels[m].sum())
+
         # add the row to the output dictionary with the source as the key
         out[str(s)] = row
     return out
