@@ -4,6 +4,7 @@ This is the main training script. It loads the configuration, sets up the model 
 data, and runs the training loop.
 
 Run:  python -m src.train --config configs/base.yaml
+      python -m src.train --config configs/base.yaml --seed 43 --out-dir /kaggle/working/runs   # Kaggle
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import os
 import random
 import json
 import subprocess
+import time
 
 import numpy as np
 import torch
@@ -25,6 +27,7 @@ from src.data import HallucinationDataset
 from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
 from src.model import HallucinationDetector, build_loss
 from src.metrics import per_source_breakdown, probs_from_logits, ranking_metrics, best_threshold, thresholded_metrics
+from utils.io import write_jsonl
 
 
 def set_seed(seed: int) -> None:
@@ -68,6 +71,47 @@ def get_git_sha() -> str:
         return "unknown"
 
 
+def get_git_dirty() -> bool | None:
+    """True if TRACKED files differ from HEAD (untracked files, e.g. run outputs, are ignored).
+    None if git is not available. A dirty run was not produced by the commit in git_sha alone."""
+    try:
+        out = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"], text=True
+        )
+        return bool(out.strip())
+    except Exception:
+        return None
+
+
+def get_device_name() -> str:
+    """GPU model (e.g. 'Tesla T4') so runs on different accelerators can be told apart."""
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_name(0)
+    return get_device()   # "mps" or "cpu"
+
+
+# Kaggle sets KAGGLE_KERNEL_RUN_TYPE ("Interactive" or "Batch") in every notebook session.
+KAGGLE_ENV_VAR = "KAGGLE_KERNEL_RUN_TYPE"
+KAGGLE_WORKING = "/kaggle/working"
+
+
+def is_kaggle() -> bool:
+    return KAGGLE_ENV_VAR in os.environ
+
+
+def check_out_dir(out_dir: str, on_kaggle: bool) -> None:
+    """On Kaggle, out_dir must be an absolute path under /kaggle/working/ (the only persisted area).
+    A relative path once silently lost a checkpoint. Off Kaggle, anything is allowed."""
+    if not on_kaggle:
+        return
+    if not os.path.isabs(out_dir):
+        raise ValueError(f"on Kaggle out_dir must be absolute under {KAGGLE_WORKING}/, got relative {out_dir!r}; "
+                         f"pass --out-dir {KAGGLE_WORKING}/runs")
+    norm = os.path.normpath(out_dir)
+    if norm != KAGGLE_WORKING and not norm.startswith(KAGGLE_WORKING + os.sep):
+        raise ValueError(f"on Kaggle out_dir must be under {KAGGLE_WORKING}/, got {out_dir!r}")
+
+
 EXPERIMENTS = ("G", "C", "G+C")
 
 
@@ -81,11 +125,39 @@ def build_run_snapshot(cfg: dict) -> dict:
         "config": cfg,                      # includes data paths
         "seed": cfg["train"]["seed"],
         "git_sha": get_git_sha(),
+        "git_dirty": get_git_dirty(),
         "experiment": experiment,
         "input_format": INPUT_FORMAT,
         "torch_version": torch.__version__,
         "transformers_version": transformers.__version__,
+        "device_name": get_device_name(),
     }
+
+
+def prediction_records(split: str, rows: list[dict], labels, probs, cfg_data: dict) -> list[dict]:
+    """One record per row for predictions.jsonl: split, idx, source, task, group_id, label, prob.
+
+    `rows` are the loader's dataset rows (val/test loaders are unshuffled and unfiltered, so evaluate()
+    returns them in file order). idx = row position in the split file. Raises ValueError if the lengths
+    differ or any label disagrees with the file, i.e. if the order assumption is broken."""
+    if not (len(rows) == len(labels) == len(probs)):
+        raise ValueError(f"{split}: {len(rows)} rows but {len(labels)} labels / {len(probs)} probs")
+    label_col, source_col = cfg_data["label_col"], cfg_data.get("dataset_col")
+    out = []
+    for i, (row, y, p) in enumerate(zip(rows, labels, probs)):
+        y_file = int(row[label_col])
+        if y_file != int(round(float(y))):
+            raise ValueError(f"{split} row {i}: file label {y_file} != evaluated label {y}; row order broken")
+        out.append({
+            "split": split,
+            "idx": i,
+            "source": row.get(source_col, "unknown") if source_col else "unknown",
+            "task": row.get("task"),
+            "group_id": row.get("group_id"),
+            "label": y_file,
+            "prob": float(p),
+        })
+    return out
 
 
 def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
@@ -163,7 +235,8 @@ def evaluate(model, loader, device):
 def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scaler) -> None:
     """Train the model for one epoch."""
     model.train()
-    for step, batch in enumerate(loader): 
+    t0 = time.perf_counter()   # wall time per epoch, read off the step log (decision D1)
+    for step, batch in enumerate(loader):
 
         enc = {k: v.to(device) for k, v in batch["enc"].items() if k != "labels"}
         # labels go to the device here, because the loss is computed on-device.
@@ -182,8 +255,13 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scale
             # compute the loss using the logits and the true labels
             loss = loss_fn(logits, labels)
 
+            # this must print autocast=True, logits dtype=torch.float16
+            if step == 0:
+                print(f"  autocast={torch.is_autocast_enabled('cuda')} logits dtype={logits.dtype} device={device}")
+
         if step % 50 == 0:
-            print(f"  step {step}/{len(loader)} loss={loss.item():.4f}")  
+            elapsed = time.perf_counter() - t0
+            print(f"  step {step}/{len(loader)} loss={loss.item():.4f} elapsed={elapsed:.0f}s")
 
         # scales the loss to prevent underflow in fp16
         scaler.scale(loss).backward()
@@ -247,6 +325,8 @@ def evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir) -> No
 
     # evaluate the model on the validation set to get the labels and probabilities
     v_labels, v_probs, v_sources = evaluate(model, val_loader, device)
+    # all val rows (every source), before the RAGTruth mask below
+    val_records = prediction_records("val", val_loader.dataset.rows, v_labels, v_probs, cfg["data"])
 
     # filter the data to only ragtruth sources since ragtruth is the main source of hallucination data.
     ragtruth_mask = np.array([s == "ragtruth" for s in v_sources])
@@ -262,6 +342,10 @@ def evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir) -> No
 
     # evaluate the model on the test set to get the labels and probabilities and sources.
     t_labels, t_probs, t_sources = evaluate(model, test_loader, device)
+
+    # per-row predictions for post-hoc analyses (truncated vs untruncated rows)
+    test_records = prediction_records("test", test_loader.dataset.rows, t_labels, t_probs, cfg["data"])
+    write_jsonl(val_records + test_records, os.path.join(run_dir, "predictions.jsonl"))
 
     # compute the ranking metrics (PR-AUC and ROC-AUC) and thresholded metrics (precision, recall, F1) at the chosen threshold on the test set.
     test = ranking_metrics(t_labels, t_probs)
@@ -285,9 +369,12 @@ def train(cfg: dict) -> None:
     """
     Train the hallucination detector model.
     """
+    # fail before any work if a Kaggle run would write outside /kaggle/working/
+    check_out_dir(cfg["train"]["out_dir"], is_kaggle())
+
     set_seed(cfg["train"]["seed"])
     device = get_device()
-    print(f"device: {device}")
+    print(f"device: {device} ({get_device_name()})")
 
     # built before the run dir, so a bad `experiment` fails without leaving an empty folder
     snapshot = build_run_snapshot(cfg)
@@ -323,14 +410,27 @@ def train(cfg: dict) -> None:
     evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir)
 
 
-def main():
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--seed", type=int, default=None)
-    args = ap.parse_args()
-    cfg = load_config(args.config)
+    ap.add_argument("--out-dir", default=None,
+                    help="overrides train.out_dir; on Kaggle must be absolute under /kaggle/working/")
+    return ap.parse_args(argv)
+
+
+def apply_cli_overrides(cfg: dict, args: argparse.Namespace) -> None:
+    """CLI flags win over the config; done before the snapshot so it records the values actually used."""
     if args.seed is not None:
         cfg["train"]["seed"] = args.seed
+    if args.out_dir is not None:
+        cfg["train"]["out_dir"] = args.out_dir
+
+
+def main():
+    args = parse_args()
+    cfg = load_config(args.config)
+    apply_cli_overrides(cfg, args)
     train(cfg)
 
 
