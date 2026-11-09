@@ -46,21 +46,6 @@ def best_threshold(labels: np.ndarray, probs: np.ndarray) -> float:
     f1s = [thresholded_metrics(labels, probs, t)["f1"] for t in grid]
     return float(grid[int(np.argmax(f1s))])
 
-
-def expected_calibration_error(labels: np.ndarray, probs: np.ndarray, n_bins: int = 10) -> float:
-    """TODO(you): implement ECE.
-
-    You need this because the FastAPI service reports a confidence, and a
-    confidence is only meaningful if it's calibrated. Algorithm:
-      1. Split [0,1] into n_bins equal-width bins by predicted prob.
-      2. For each bin: mean predicted prob (confidence) and mean label (accuracy).
-      3. ECE = sum over bins of (bin_size / N) * |accuracy - confidence|.
-    Return the scalar. Later you can also plot a reliability diagram from the
-    per-bin (confidence, accuracy) pairs.
-    """
-    raise NotImplementedError
-
-
 def per_source_breakdown(labels, probs, sources, threshold):
     """Report metrics separately per source (ragtruth vs halueval, and later the
     niche set). This is where the transfer story lives: train general, then read
