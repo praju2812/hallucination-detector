@@ -1,0 +1,27 @@
+experiment: G
+model:
+  name: answerdotai/ModernBERT-base
+  max_length: 1024
+  dropout: 0.1
+  resp_max: 384
+data:
+  train_path: data/unified_v2/tiny.jsonl
+  val_path: data/unified_v2/tiny.jsonl
+  test_path: data/unified_v2/tiny.jsonl
+  query_col: query
+  context_col: context
+  response_col: answer
+  label_col: label
+  dataset_col: source
+train:
+  epochs: 1
+  batch_size: 8
+  lr: 2.0e-05
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+  pos_weight: 2.3
+  seed: 42
+  eval_every_epoch: true
+  select_on: pr_auc
+  out_dir: /kaggle/working/smoke
