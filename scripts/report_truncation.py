@@ -15,6 +15,10 @@ Definitions (all from the real Collator.encode_with_response_budget output):
 At max_length 1024 the last two "must be 0" columns (ctx 0 tokens, resp overflow cut) are checked.
 
 Run:  python -m scripts.report_truncation --config configs/base.yaml --data-dir data/unified_v2
+      ... --per-row results/truncation_flags_v2.jsonl   # also write one flag line per row (Phase 2)
+
+--per-row lines: {split, idx, source, group_id, ctx_truncated}; idx = row position in the split file,
+the same definition predictions.jsonl uses, so the two files join on (split, idx).
 """
 
 from __future__ import annotations
@@ -29,9 +33,20 @@ import yaml
 
 sys.path.append(str(Path(__file__).parent.parent))
 from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
-from utils.io import read_jsonl
+from utils.io import read_jsonl, write_jsonl
 
 SPLITS = ("train", "val", "test")
+
+
+def per_row_record(split: str, idx: int, row: dict, stats: dict, cfg_data: dict) -> dict:
+    """One line of the --per-row flags file."""
+    return {
+        "split": split,
+        "idx": int(idx),
+        "source": row[cfg_data["dataset_col"]],
+        "group_id": row.get("group_id"),
+        "ctx_truncated": bool(stats["ctx_trunc"]),
+    }
 
 
 def split_output(out: list[int], sep_id: int) -> tuple[list[int], list[int]]:
@@ -62,6 +77,7 @@ def main() -> None:
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--data-dir", default="data/unified_v2")
     ap.add_argument("--limit", type=int, default=None, help="first N rows per split (quick look only, not for the report)")
+    ap.add_argument("--per-row", default=None, help="also write per-row truncation flags (jsonl) to this path")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -71,13 +87,20 @@ def main() -> None:
     coll = Collator(tok, m["max_length"], m["resp_max"])
 
     groups = defaultdict(list)
+    flags = []
     for sp in SPLITS:
         path = os.path.join(args.data_dir, f"{sp}.jsonl")
         rows = read_jsonl(path)[: args.limit]
-        for r in rows:
+        for i, r in enumerate(rows):
             s = row_stats(coll, tok, r[d["query_col"]], r[d["context_col"]], r[d["response_col"]])
             groups[(sp, r[d["dataset_col"]])].append(s)
+            if args.per_row:
+                flags.append(per_row_record(sp, i, r, s, d))
         print(f"  scored {path}: {len(rows)} rows", file=sys.stderr)
+
+    if args.per_row:
+        write_jsonl(flags, args.per_row)
+        print(f"  wrote {len(flags)} per-row flags to {args.per_row}", file=sys.stderr)
 
     print(f"\nconfig {args.config}: max_length {m['max_length']}, resp_max {m['resp_max']}; data {args.data_dir}"
           + (f"; LIMIT {args.limit} rows/split (not for the report)" if args.limit else ""))
