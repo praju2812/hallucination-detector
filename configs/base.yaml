@@ -5,6 +5,8 @@
 # not code. Train on RAGTruth/HaluEval now; drop in the niche dataset as a
 # held-out test set once your supervisor signs off on the topic.
 
+experiment: "G"        # G | C | G+C, recorded in config_snapshot.json
+
 model:
   name: "answerdotai/ModernBERT-base"
   max_length: 1024      # covers p95 (1006); truncates only ~5% instead of 21%
@@ -15,9 +17,10 @@ model:
 # Point them at whatever you already built. Column names are parametrised below
 # so this loader matches your schema instead of forcing a schema on you.
 data:
-  train_path: "data/unified/train.jsonl"
-  val_path:   "data/unified/val.jsonl"
-  test_path:  "data/unified/test.jsonl"
+  train_path: "data/unified_v2/train.jsonl"
+  val_path:   "data/unified_v2/val.jsonl"
+  test_path:  "data/unified_v2/test.jsonl"
+  query_col:    "query"        # user question / instruction; goes in "Question: {query} Context: {context}"
   context_col:  "context"      # retrieved passage(s) the answer is meant to be grounded in
   response_col: "answer"     # the LLM answer being judged
   label_col:    "label"        # 1 = hallucinated / unfaithful, 0 = faithful

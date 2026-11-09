@@ -4,6 +4,7 @@ Turns RAGTruth and HaluEval into one schema and writes group-split train/val/tes
 files.
 
 Unified row schema (every row from both sources ends up exactly like this):
+    query     : str   the user's question / instruction 
     context   : str   the passage(s) the answer is meant to be grounded in
     answer    : str   the response being judged
     label     : int   1 = hallucinated / unfaithful, 0 = faithful
@@ -15,8 +16,13 @@ Run:  python -m scripts.build_dataset \
           --ragtruth-response data/raw/RAGTruth/dataset/response.jsonl \
           --ragtruth-source   data/raw/RAGTruth/dataset/source_info.jsonl \
           --halueval          data/raw/HaluEval/data/qa_data.json \
-          --out-dir           data/unified \
+          --out-dir           data/unified_v2 \
+          --v1-dir            data/unified \
           --seed 42
+
+v2 (Phase 1) adds `query`. Rows, order, splits and all other columns must be identical
+to v1: check_against_v1 runs before anything is written. data/unified/ and data/raw/
+are never written (refuse_protected_out_dir).
 """
 
 from __future__ import annotations
@@ -25,9 +31,157 @@ import os
 
 import sys
 from pathlib import Path
+
+import re
+
 sys.path.append(str(Path(__file__).parent.parent))
 from sklearn.model_selection import GroupShuffleSplit
-from utils.io import read_jsonl, write_jsonl 
+from utils.io import read_jsonl, write_jsonl
+
+PROTECTED_DIRS = ("data/unified", "data/raw")  
+KEEP = ("query", "context", "answer", "label", "source", "task", "group_id")   # column order in output files
+V1_COLS = ("context", "answer", "label", "source", "task", "group_id")         # must match v1 exactly
+
+
+# ------------------------------- query extraction -------------------------------
+
+def _halueval_query(record: dict) -> str:
+    """Return the query for one HaluEval QA record.
+
+    Input:  one record from qa_data.json (keys: knowledge, question, right_answer, hallucinated_answer).
+    Output: the question, stripped of leading/trailing whitespace.
+
+    """
+    # read the question from the record.
+    question = record.get("question")
+    
+    if not question:
+        raise ValueError("Question is missing or empty")
+
+    # normalise whitespace at the ends.
+    question = question.strip()
+
+    # check if the question is still empty after stripping.
+    if not question:
+        raise ValueError("Question is missing or empty")
+    return question
+
+def _ragtruth_query(source_record: dict) -> str:
+    """Return the query for one RAGTruth source_info.jsonl record (QA or Summary).
+
+    Input:  the whole source_info.jsonl record (keys: source_id, task_type, source, source_info, prompt).
+            The whole record is needed because the Summary instruction lives in `prompt`, not in `source_info`.
+    Output :
+      - QA:      the bare question from source_info, stripped.
+      - Summary: the prompt's first line with the word limit removed: "Summarize the following news".
+    Raises ValueError for any other task_type, an empty query, or a Summary first line that does not
+    match the known template "Summarize the following news within N words:".
+
+    Data facts : QA source_info is always a dict with `question` and `passages`;
+    all 943 Summary prompts start with that template on line 1, then the passage, then "output:".
+
+    """
+    # branch on task_type.
+    task_type = source_record.get("task_type")
+
+    if task_type == "QA":
+        # extract the question from source_info and strip it for whitespace
+        question = source_record.get("source_info", {}).get("question", "")
+
+        # check if the question is empty or missing after stripping
+        if not question or not question.strip():
+            raise ValueError("Question is missing or empty in RAGTruth QA record")
+        return question.strip()
+            
+    elif task_type == "Summary":
+        # isolate the instruction from the prompt without touching the passage.
+        prompt = source_record.get("prompt", "")
+        lines = prompt.split("\n")
+
+        instruction = lines[0]
+        # check the instruction matches the expected template 
+        if re.fullmatch(r"Summarize the following news within \d+ words:", instruction):
+            return "Summarize the following news"
+        else:
+            raise ValueError(f"Unexpected Summary instruction: {instruction}")
+    else:
+        raise ValueError(f"Unknown task type: {task_type}")
+
+
+def check_against_v1(v2_splits: dict[str, list[dict]], v1_dir: str) -> None:
+    """Assert that v2 is v1 plus a query column, and nothing else changed.
+
+    Input:  v2_splits = {"train": rows, "val": rows, "test": rows} as they are about to be written;
+            v1_dir    = directory holding v1 {split}.jsonl files (read with utils.io.read_jsonl).
+    Checks, for every split present in v1_dir as train/val/test:
+      - the split exists in v2_splits;
+      - same number of rows;
+      - row i of v2 equals row i of v1 on every column in V1_COLS (same order, identical values);
+      - every v2 row has a `query` that is a non-empty string after stripping.
+    Raises AssertionError whose message names the split (and the row index and column where relevant).
+    Returns None when everything matches. Never writes anything.
+
+    """
+    #for each split name, load the v1 rows.
+    v1_rows = {}
+    for split in ["train", "val", "test"]:
+        if os.path.exists(os.path.join(v1_dir, f"{split}.jsonl")):
+            v1_rows[split] = read_jsonl(os.path.join(v1_dir, f"{split}.jsonl"))
+
+    # check if v1 is empty
+    if not v1_rows:
+        raise AssertionError(f"No v1 splits found in {v1_dir}")
+    
+    # compare lengths first (a zip over unequal lists silently stops early)
+    for split in v1_rows.keys():
+        v1 = v1_rows[split]
+        v2 = v2_splits.get(split)
+        if v2 is None:
+            raise AssertionError(f"v2 missing split {split}")
+        if len(v1) != len(v2):
+            raise AssertionError(f"v1 {split} has {len(v1)} rows, v2 has {len(v2)} rows")
+        
+    # walk the two lists in parallel; compare the V1_COLS columns.
+    for split in v1_rows.keys():
+        v1 = v1_rows[split]
+        v2 = v2_splits[split]
+        for i, (r1, r2) in enumerate(zip(v1, v2)):
+            for k in V1_COLS:
+                if r1[k] != r2[k]:
+                    # only report the first 80 characters of each mismatch per row, to avoid a flood of messages
+                    raise AssertionError(f"v1 {split} row {i}, column {k}: {r1[k]!r:.80} != {r2[k]!r:.80}")
+                
+    # check the query column on every v2 row.
+    for split in v2_splits.keys():
+        v2 = v2_splits[split]
+        for i, r in enumerate(v2):
+            query = r.get("query")
+            if not isinstance(query, str) or not query.strip():
+                raise AssertionError(f"v2 {split} row {i} has empty or non-string query: {query!r}")
+
+
+def refuse_protected_out_dir(out_dir: str) -> None:
+    """Raise ValueError if out_dir is (inside) data/unified or data/raw.
+    Compares resolved paths, so data/unified_v2 is allowed (a plain startswith would not be)."""
+    target = Path(out_dir).resolve()
+    for p in PROTECTED_DIRS:
+        protected = Path(p).resolve()
+        if target == protected or protected in target.parents:
+            raise ValueError(f"refusing to write into {p}/ (hard rule 1): got --out-dir {out_dir}")
+
+
+def build_tiny(tiny_v1: list[dict], rows: list[dict]) -> list[dict]:
+    """The same rows as v1 tiny.jsonl, in the same order, taken from the new rows (so they carry `query`).
+    Rows are matched on all V1_COLS. Raises ValueError if a v1 tiny row is not found."""
+    index = {tuple(r[k] for k in V1_COLS): r for r in rows}
+    out = []
+    for i, t in enumerate(tiny_v1):
+        key = tuple(t[k] for k in V1_COLS)
+        if key not in index:
+            raise ValueError(f"tiny row {i} (group_id {t.get('group_id')}) not found in the new build")
+        out.append({k: index[key][k] for k in KEEP})
+    return out
+
 
 def load_halueval(path: str) -> list[dict]:
     """Convert HaluEval QA records into unified rows.
@@ -36,10 +190,10 @@ def load_halueval(path: str) -> list[dict]:
 
       - For each record emit TWO rows: one with right_answer (label 0) and one
         with hallucinated_answer (label 1). That is where the 50/50 balance comes
-        from. 
+        from.
       - Build `context` from `knowledge`
       - group_id: both rows from one record share a context, so they must share a
-        group_id (e.g. a stable hash of `knowledge`, or the record index). If they
+        group_id (record index). If they
         don't, the faithful and hallucinated halves can leak across the split.
       - task = "qa" for HaluEval QA. source = "halueval".
     """
@@ -49,13 +203,15 @@ def load_halueval(path: str) -> list[dict]:
         right_answer = r["right_answer"]
         hallucinated_answer = r["hallucinated_answer"]
         context = knowledge
+        query = _halueval_query(r)
 
         # hash the knowledge to create a stable group_id for both rows. This ensures that
         # both the faithful and hallucinated answers for the same knowledge/question pair
-        # are kept together in the same split (train/val/test) and prevents data leakage    
+        # are kept together in the same split (train/val/test) and prevents data leakage
         group_id = f"halueval-{i}"
         rows.append(
             {
+                "query": query,
                 "context": context,
                 "answer": right_answer,
                 "label": 0,
@@ -66,6 +222,7 @@ def load_halueval(path: str) -> list[dict]:
         )
         rows.append(
             {
+                "query": query,
                 "context": context,
                 "answer": hallucinated_answer,
                 "label": 1,
@@ -109,9 +266,12 @@ def load_ragtruth(response_path: str, source_info_path: str) -> list[dict]:
 
     info = {}
     for s in read_jsonl(source_info_path):
+        task = TASK_MAP[s["task_type"]]
         info[s["source_id"]] = {
             "context": s["source_info"],
-            "task": TASK_MAP[s["task_type"]],
+            "task": task,
+            # Data2txt rows are dropped below, so they never need a query
+            "query": None if task == "data2txt" else _ragtruth_query(s),
         }
 
     rows = []
@@ -120,6 +280,7 @@ def load_ragtruth(response_path: str, source_info_path: str) -> list[dict]:
         if sid not in info or info[sid]["task"] == "data2txt":
             continue
         rows.append({
+            "query":    info[sid]["query"],
             "context":  _ragtruth_context(info[sid]["context"]),
             "answer":   r["response"],
             "label":    1 if r["labels"] else 0,
@@ -189,8 +350,9 @@ def assert_no_group_leakage(train, val, test) -> None:
 
 
 def assert_schema(rows: list[dict]) -> None:
-    fields = {"context", "answer", "label", "source", "task", "group_id"}
+    fields = set(KEEP)
     for r in rows:
+        assert isinstance(r["query"], str) and r["query"].strip(), f"bad query: {r['group_id']}"
         assert fields <= set(r), f"row missing fields: {fields - set(r)}"
         assert r["label"] in (0, 1), f"bad label: {r['label']!r}"
         assert r["context"] and r["answer"], "empty context or answer"
@@ -216,9 +378,12 @@ def main() -> None:
     ap.add_argument("--ragtruth-response", required=True)
     ap.add_argument("--ragtruth-source", required=True)
     ap.add_argument("--halueval", required=True)
-    ap.add_argument("--out-dir", default="data/unified")
+    ap.add_argument("--out-dir", default="data/unified_v2")
+    ap.add_argument("--v1-dir", default="data/unified", help="read-only: v1 splits + tiny.jsonl to check against")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+
+    refuse_protected_out_dir(args.out_dir)
 
     rows = []
     rows += load_ragtruth(args.ragtruth_response, args.ragtruth_source)
@@ -245,12 +410,24 @@ def main() -> None:
 
     assert_no_group_leakage(train, val, test)
 
-    KEEP = {"context", "answer", "label", "source", "task", "group_id"}
-    # write out the splits, keeping only the fields in KEEP
-    for name, split in [("train", train), ("val", val), ("test", test)]:
+    # keep only the fields in KEEP (a tuple, so the key order in the files is fixed)
+    clean = {name: [{k: r[k] for k in KEEP} for r in split]
+             for name, split in [("train", train), ("val", val), ("test", test)]}
+
+    # v2 must be v1 plus query: check BEFORE anything is written
+    check_against_v1(clean, args.v1_dir)
+    print(f"check_against_v1: PASS against {args.v1_dir}")
+
+    tiny_v1_path = os.path.join(args.v1_dir, "tiny.jsonl")
+    tiny = build_tiny(read_jsonl(tiny_v1_path), clean["train"] + clean["val"] + clean["test"]) \
+        if os.path.exists(tiny_v1_path) else None
+
+    for name, split in clean.items():
         report(name, split)
-        clean = [{k: r[k] for k in KEEP} for r in split]
-        write_jsonl(clean, os.path.join(args.out_dir, f"{name}.jsonl"))
+        write_jsonl(split, os.path.join(args.out_dir, f"{name}.jsonl"))
+    if tiny is not None:
+        write_jsonl(tiny, os.path.join(args.out_dir, "tiny.jsonl"))
+        print(f"tiny.jsonl: {len(tiny)} rows (same rows and order as {tiny_v1_path})")
 
     print(f"wrote splits to {args.out_dir}")
 
