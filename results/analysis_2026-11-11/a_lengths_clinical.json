@@ -1,0 +1,1030 @@
+{
+ "build_clinical_sha": "ef2537212375d5cdc87f7e0c88c11a70961702fd",
+ "seed": 42,
+ "val_frac": 0.1,
+ "self_check_rows": 200,
+ "rows": {
+  "train": 37114,
+  "val": 2352,
+  "test": 2625,
+  "test_full": 4696
+ },
+ "scopes": {
+  "train": {
+   "ragbench_pubmedqa": {
+    "describe": {
+     "n": 19600,
+     "mean": 593.0111224489796,
+     "sd": 163.4450225627757,
+     "skew": 0.418811211621797,
+     "mean_2sd": 919.901167574531,
+     "mean_2sd_pctile": 96.75510204081633,
+     "pct_above_mean_2sd": 3.2448979591836737,
+     "log_mean_2sd": 1017.9522469341115,
+     "log_mean_2sd_pctile": 98.88265306122449,
+     "pct_above_log_mean_2sd": 1.1173469387755102,
+     "p95": 879.0,
+     "pct_above_p95": 4.974489795918367,
+     "p50": 583.0,
+     "p90": 804.0,
+     "p97.5": 942.0,
+     "p99": 1025.0,
+     "max": 1550.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 67.29081632653062,
+      "pct_response_cut": 0.770408163265306,
+      "mean_tokens_kept": 481.61285714285714,
+      "proxy_lower_linear": 0.8133377712612346,
+      "proxy_upper_squared": 0.6255680435633886
+     },
+     "1024": {
+      "pct_truncated": 1.0051020408163267,
+      "pct_response_cut": 0.770408163265306,
+      "mean_tokens_kept": 592.1437244897959,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.005102040816326531,
+      "pct_response_cut": 0.770408163265306,
+      "mean_tokens_kept": 593.0104081632653,
+      "proxy_lower_linear": 1.001463637352935,
+      "proxy_upper_squared": 1.0051160421528993
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.770408163265306,
+      "mean_tokens_kept": 593.0111224489796,
+      "proxy_lower_linear": 1.0014648436237858,
+      "proxy_upper_squared": 1.005121897654009
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.770408163265306,
+      "mean_tokens_kept": 593.0111224489796,
+      "proxy_lower_linear": 1.0014648436237858,
+      "proxy_upper_squared": 1.005121897654009
+     }
+    },
+    "pct_response_over_resp_max": 0.770408163265306,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 98.99489795918367,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 98.99489795918367
+   },
+   "ragbench_covidqa": {
+    "describe": {
+     "n": 1252,
+     "mean": 573.5431309904153,
+     "sd": 124.05575147151657,
+     "skew": -0.8666118077822504,
+     "mean_2sd": 821.6546339334484,
+     "mean_2sd_pctile": 99.4408945686901,
+     "pct_above_mean_2sd": 0.5591054313099041,
+     "log_mean_2sd": 950.1070509560633,
+     "log_mean_2sd_pctile": 100.0,
+     "pct_above_log_mean_2sd": 0.0,
+     "p95": 745.0,
+     "pct_above_p95": 4.872204472843451,
+     "p50": 592.0,
+     "p90": 710.9000000000001,
+     "p97.5": 770.0,
+     "p99": 805.49,
+     "max": 883.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 74.52076677316293,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 485.63897763578274,
+      "proxy_lower_linear": 0.8467348860009247,
+      "proxy_upper_squared": 0.6976344717084983
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 573.5431309904153,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 573.5431309904153,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 573.5431309904153,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 573.5431309904153,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 97.20447284345049,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 100.0
+   },
+   "medhallu": {
+    "describe": {
+     "n": 16262,
+     "mean": 385.6170212765957,
+     "sd": 90.10466032874236,
+     "skew": 0.6060525542657389,
+     "mean_2sd": 565.8263419340805,
+     "mean_2sd_pctile": 96.67937523059894,
+     "pct_above_mean_2sd": 3.320624769401058,
+     "log_mean_2sd": 607.3578000433984,
+     "log_mean_2sd_pctile": 98.16135776657238,
+     "pct_above_log_mean_2sd": 1.8386422334276227,
+     "p95": 536.0,
+     "pct_above_p95": 4.907145492559341,
+     "p50": 381.0,
+     "p90": 494.0,
+     "p97.5": 585.0,
+     "p99": 651.0,
+     "max": 1032.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 7.403763374738655,
+      "pct_response_cut": 0.006149305128520478,
+      "mean_tokens_kept": 380.66141925962364,
+      "proxy_lower_linear": 0.987150161635594,
+      "proxy_upper_squared": 0.9632926944846364
+     },
+     "1024": {
+      "pct_truncated": 0.006149305128520478,
+      "pct_response_cut": 0.006149305128520478,
+      "mean_tokens_kept": 385.61652933218545,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.006149305128520478,
+      "mean_tokens_kept": 385.6170212765957,
+      "proxy_lower_linear": 1.0000012757347594,
+      "proxy_upper_squared": 1.0000064497623256
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.006149305128520478,
+      "mean_tokens_kept": 385.6170212765957,
+      "proxy_lower_linear": 1.0000012757347594,
+      "proxy_upper_squared": 1.0000064497623256
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.006149305128520478,
+      "mean_tokens_kept": 385.6170212765957,
+      "proxy_lower_linear": 1.0000012757347594,
+      "proxy_upper_squared": 1.0000064497623256
+     }
+    },
+    "pct_response_over_resp_max": 0.006149305128520478,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 99.82781945640143,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 99.82781945640143
+   },
+   "clinical pooled": {
+    "describe": {
+     "n": 37114,
+     "mean": 501.4818666810368,
+     "sd": 169.30873054795995,
+     "skew": 0.7396572506734133,
+     "mean_2sd": 840.0993277769567,
+     "mean_2sd_pctile": 96.17125612976236,
+     "pct_above_mean_2sd": 3.828743870237646,
+     "log_mean_2sd": 934.3332850146317,
+     "log_mean_2sd_pctile": 98.5558010454276,
+     "pct_above_log_mean_2sd": 1.4441989545723986,
+     "p95": 811.0,
+     "pct_above_p95": 4.984641914102495,
+     "p50": 470.0,
+     "p90": 735.0,
+     "p97.5": 886.0,
+     "p99": 968.0,
+     "max": 1550.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 41.29439025704586,
+      "pct_response_cut": 0.40954895726679963,
+      "mean_tokens_kept": 437.5154389179285,
+      "proxy_lower_linear": 0.8732432162234675,
+      "proxy_upper_squared": 0.711702723154182
+     },
+     "1024": {
+      "pct_truncated": 0.5334914048606995,
+      "pct_response_cut": 0.40954895726679963,
+      "mean_tokens_kept": 501.0235760090532,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0026944010346499976,
+      "pct_response_cut": 0.40954895726679963,
+      "mean_tokens_kept": 501.481489464892,
+      "proxy_lower_linear": 1.0009139559050022,
+      "proxy_upper_squared": 1.0036453467650883
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.40954895726679963,
+      "mean_tokens_kept": 501.4818666810368,
+      "proxy_lower_linear": 1.0009147087960095,
+      "proxy_upper_squared": 1.003649517183276
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.40954895726679963,
+      "mean_tokens_kept": 501.4818666810368,
+      "proxy_lower_linear": 1.0009147087960095,
+      "proxy_upper_squared": 1.003649517183276
+     }
+    },
+    "pct_response_over_resp_max": 0.40954895726679963,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 99.4665085951393,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.4665085951393
+   }
+  },
+  "test": {
+   "ragbench_pubmedqa": {
+    "describe": {
+     "n": 522,
+     "mean": 631.0747126436781,
+     "sd": 155.73621877767775,
+     "skew": 0.2403203087444421,
+     "mean_2sd": 942.5471501990337,
+     "mean_2sd_pctile": 97.31800766283526,
+     "pct_above_mean_2sd": 2.681992337164751,
+     "log_mean_2sd": 1031.9428326505802,
+     "log_mean_2sd_pctile": 99.23371647509579,
+     "pct_above_log_mean_2sd": 0.7662835249042145,
+     "p95": 901.95,
+     "pct_above_p95": 5.172413793103448,
+     "p50": 625.0,
+     "p90": 837.7,
+     "p97.5": 961.4499999999992,
+     "p99": 997.5299999999997,
+     "max": 1212.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 77.77777777777779,
+      "pct_response_cut": 0.7662835249042145,
+      "mean_tokens_kept": 493.6570881226054,
+      "proxy_lower_linear": 0.7830350360083868,
+      "proxy_upper_squared": 0.5838112959327386
+     },
+     "1024": {
+      "pct_truncated": 0.7662835249042145,
+      "pct_response_cut": 0.7662835249042145,
+      "mean_tokens_kept": 630.44061302682,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.7662835249042145,
+      "mean_tokens_kept": 631.0747126436781,
+      "proxy_lower_linear": 1.001005803883436,
+      "proxy_upper_squared": 1.0032768696413574
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.7662835249042145,
+      "mean_tokens_kept": 631.0747126436781,
+      "proxy_lower_linear": 1.001005803883436,
+      "proxy_upper_squared": 1.0032768696413574
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.7662835249042145,
+      "mean_tokens_kept": 631.0747126436781,
+      "proxy_lower_linear": 1.001005803883436,
+      "proxy_upper_squared": 1.0032768696413574
+     }
+    },
+    "pct_response_over_resp_max": 0.7662835249042145,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 99.23371647509579,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.23371647509579
+   },
+   "ragbench_covidqa": {
+    "describe": {
+     "n": 105,
+     "mean": 559.7142857142857,
+     "sd": 130.89828069959472,
+     "skew": -0.9847827016319038,
+     "mean_2sd": 821.5108471134752,
+     "mean_2sd_pctile": 100.0,
+     "pct_above_mean_2sd": 0.0,
+     "log_mean_2sd": 974.9038254335736,
+     "log_mean_2sd_pctile": 100.0,
+     "pct_above_log_mean_2sd": 0.0,
+     "p95": 742.8,
+     "pct_above_p95": 5.714285714285714,
+     "p50": 591.0,
+     "p90": 686.4000000000001,
+     "p97.5": 757.3999999999999,
+     "p99": 791.8399999999998,
+     "max": 801.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 73.33333333333333,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 478.56190476190477,
+      "proxy_lower_linear": 0.8550110600646589,
+      "proxy_upper_squared": 0.711472984696039
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 559.7142857142857,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 559.7142857142857,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 559.7142857142857,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 559.7142857142857,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 98.09523809523809,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 98.09523809523809
+   },
+   "medhallu": {
+    "describe": {
+     "n": 1998,
+     "mean": 368.68068068068067,
+     "sd": 89.71755121285123,
+     "skew": 0.47286741795424947,
+     "mean_2sd": 548.1157831063831,
+     "mean_2sd_pctile": 96.5965965965966,
+     "pct_above_mean_2sd": 3.4034034034034035,
+     "log_mean_2sd": 591.3314320529707,
+     "log_mean_2sd_pctile": 98.0980980980981,
+     "pct_above_log_mean_2sd": 1.9019019019019021,
+     "p95": 520.0,
+     "pct_above_p95": 4.954954954954955,
+     "p50": 367.0,
+     "p90": 477.0,
+     "p97.5": 572.075,
+     "p99": 616.1199999999999,
+     "max": 822.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 5.605605605605605,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 365.0685685685686,
+      "proxy_lower_linear": 0.9902025999695911,
+      "proxy_upper_squared": 0.9714594442016059
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.68068068068067,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.68068068068067,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.68068068068067,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.68068068068067,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 99.8998998998999,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 99.8998998998999
+   },
+   "clinical pooled": {
+    "describe": {
+     "n": 2625,
+     "mean": 428.50095238095236,
+     "sd": 152.30811629551778,
+     "skew": 1.1411715159298974,
+     "mean_2sd": 733.1171849719879,
+     "mean_2sd_pctile": 95.08571428571429,
+     "pct_above_mean_2sd": 4.914285714285714,
+     "log_mean_2sd": 794.3340643254005,
+     "log_mean_2sd_pctile": 97.10476190476192,
+     "pct_above_log_mean_2sd": 2.895238095238095,
+     "p95": 732.7999999999997,
+     "pct_above_p95": 5.0285714285714285,
+     "p50": 394.0,
+     "p90": 648.0,
+     "p97.5": 810.2000000000003,
+     "p99": 901.7599999999998,
+     "max": 1212.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 22.666666666666664,
+      "pct_response_cut": 0.1523809523809524,
+      "mean_tokens_kept": 395.1790476190476,
+      "proxy_lower_linear": 0.922507567915595,
+      "proxy_upper_squared": 0.7976605231028878
+     },
+     "1024": {
+      "pct_truncated": 0.1523809523809524,
+      "pct_response_cut": 0.1523809523809524,
+      "mean_tokens_kept": 428.37485714285714,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.1523809523809524,
+      "mean_tokens_kept": 428.50095238095236,
+      "proxy_lower_linear": 1.0002943572340735,
+      "proxy_upper_squared": 1.0013285861660195
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.1523809523809524,
+      "mean_tokens_kept": 428.50095238095236,
+      "proxy_lower_linear": 1.0002943572340735,
+      "proxy_upper_squared": 1.0013285861660195
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.1523809523809524,
+      "mean_tokens_kept": 428.50095238095236,
+      "proxy_lower_linear": 1.0002943572340735,
+      "proxy_upper_squared": 1.0013285861660195
+     }
+    },
+    "pct_response_over_resp_max": 0.1523809523809524,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 96.41904761904762,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.84761904761905
+   }
+  },
+  "test_full": {
+   "ragbench_pubmedqa": {
+    "describe": {
+     "n": 2450,
+     "mean": 600.1367346938775,
+     "sd": 156.5035991898014,
+     "skew": 0.3243930962905701,
+     "mean_2sd": 913.1439330734804,
+     "mean_2sd_pctile": 96.73469387755101,
+     "pct_above_mean_2sd": 3.2653061224489797,
+     "log_mean_2sd": 998.7394380945815,
+     "log_mean_2sd_pctile": 98.89795918367346,
+     "pct_above_log_mean_2sd": 1.1020408163265307,
+     "p95": 871.5499999999997,
+     "pct_above_p95": 5.020408163265306,
+     "p50": 589.0,
+     "p90": 803.0,
+     "p97.5": 930.3250000000003,
+     "p99": 1006.5099999999998,
+     "max": 1212.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 70.57142857142857,
+      "pct_response_cut": 0.4897959183673469,
+      "mean_tokens_kept": 485.3885714285714,
+      "proxy_lower_linear": 0.8093768312528372,
+      "proxy_upper_squared": 0.6216520246744588
+     },
+     "1024": {
+      "pct_truncated": 0.8163265306122449,
+      "pct_response_cut": 0.4897959183673469,
+      "mean_tokens_kept": 599.7065306122449,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.4897959183673469,
+      "mean_tokens_kept": 600.1367346938775,
+      "proxy_lower_linear": 1.000717357673583,
+      "proxy_upper_squared": 1.0024032519956563
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.4897959183673469,
+      "mean_tokens_kept": 600.1367346938775,
+      "proxy_lower_linear": 1.000717357673583,
+      "proxy_upper_squared": 1.0024032519956563
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.4897959183673469,
+      "mean_tokens_kept": 600.1367346938775,
+      "proxy_lower_linear": 1.000717357673583,
+      "proxy_upper_squared": 1.0024032519956563
+     }
+    },
+    "pct_response_over_resp_max": 0.4897959183673469,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 99.18367346938776,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.18367346938776
+   },
+   "ragbench_covidqa": {
+    "describe": {
+     "n": 246,
+     "mean": 557.1788617886178,
+     "sd": 141.18362814956518,
+     "skew": -1.064414906443555,
+     "mean_2sd": 839.5461180877483,
+     "mean_2sd_pctile": 100.0,
+     "pct_above_mean_2sd": 0.0,
+     "log_mean_2sd": 1035.4144781611776,
+     "log_mean_2sd_pctile": 100.0,
+     "pct_above_log_mean_2sd": 0.0,
+     "p95": 744.0,
+     "pct_above_p95": 5.284552845528456,
+     "p50": 595.5,
+     "p90": 705.5,
+     "p97.5": 761.25,
+     "p99": 786.2500000000002,
+     "max": 801.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 73.57723577235772,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 472.8333333333333,
+      "proxy_lower_linear": 0.8486203726671823,
+      "proxy_upper_squared": 0.6996777800644395
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 557.1788617886178,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 557.1788617886178,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 557.1788617886178,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 557.1788617886178,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 98.3739837398374,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 98.3739837398374
+   },
+   "medhallu": {
+    "describe": {
+     "n": 2000,
+     "mean": 368.7025,
+     "sd": 89.67604970500958,
+     "skew": 0.4723457862534774,
+     "mean_2sd": 548.0545994100191,
+     "mean_2sd_pctile": 96.60000000000001,
+     "pct_above_mean_2sd": 3.4000000000000004,
+     "log_mean_2sd": 591.2544593168511,
+     "log_mean_2sd_pctile": 98.10000000000001,
+     "pct_above_log_mean_2sd": 1.9,
+     "p95": 520.0,
+     "pct_above_p95": 4.95,
+     "p50": 367.0,
+     "p90": 477.0,
+     "p97.5": 572.0249999999999,
+     "p99": 616.04,
+     "max": 822.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 5.6000000000000005,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 365.094,
+      "proxy_lower_linear": 0.9902129765868146,
+      "proxy_upper_squared": 0.9714896980699097
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.7025,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.7025,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.7025,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 368.7025,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 99.9,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 99.9
+   },
+   "clinical pooled": {
+    "describe": {
+     "n": 4696,
+     "mean": 499.31984667802385,
+     "sd": 173.1685443366246,
+     "skew": 0.5657407740943897,
+     "mean_2sd": 845.656935351273,
+     "mean_2sd_pctile": 96.65672913117547,
+     "pct_above_mean_2sd": 3.3432708688245314,
+     "log_mean_2sd": 957.1347575822156,
+     "log_mean_2sd_pctile": 99.04173764906302,
+     "pct_above_log_mean_2sd": 0.9582623509369677,
+     "p95": 808.25,
+     "pct_above_p95": 5.004258943781942,
+     "p50": 471.0,
+     "p90": 739.0,
+     "p97.5": 876.0,
+     "p99": 950.2000000000007,
+     "max": 1212.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 43.05792163543441,
+      "pct_response_cut": 0.2555366269165247,
+      "mean_tokens_kept": 433.49808347529813,
+      "proxy_lower_linear": 0.8685675788223327,
+      "proxy_upper_squared": 0.7034327014222563
+     },
+     "1024": {
+      "pct_truncated": 0.42589437819420783,
+      "pct_response_cut": 0.2555366269165247,
+      "mean_tokens_kept": 499.0954003407155,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.2555366269165247,
+      "mean_tokens_kept": 499.31984667802385,
+      "proxy_lower_linear": 1.0004497062829172,
+      "proxy_upper_squared": 1.0017255739881907
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.2555366269165247,
+      "mean_tokens_kept": 499.31984667802385,
+      "proxy_lower_linear": 1.0004497062829172,
+      "proxy_upper_squared": 1.0017255739881907
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.2555366269165247,
+      "mean_tokens_kept": 499.31984667802385,
+      "proxy_lower_linear": 1.0004497062829172,
+      "proxy_upper_squared": 1.0017255739881907
+     }
+    },
+    "pct_response_over_resp_max": 0.2555366269165247,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 99.5741056218058,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.5741056218058
+   }
+  },
+  "all splits": {
+   "ragbench_pubmedqa": {
+    "describe": {
+     "n": 20648,
+     "mean": 594.7790100736149,
+     "sd": 163.51895936355646,
+     "skew": 0.40986334170492034,
+     "mean_2sd": 921.8169288007279,
+     "mean_2sd_pctile": 96.7793490895002,
+     "pct_above_mean_2sd": 3.2206509104998062,
+     "log_mean_2sd": 1020.0773750988582,
+     "log_mean_2sd_pctile": 98.94420767144518,
+     "pct_above_log_mean_2sd": 1.0557923285548236,
+     "p95": 882.0,
+     "pct_above_p95": 4.959318093762108,
+     "p50": 585.0,
+     "p90": 806.0,
+     "p97.5": 943.8250000000007,
+     "p99": 1026.0599999999977,
+     "max": 1550.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 67.75474622239443,
+      "pct_response_cut": 0.7652072839984503,
+      "mean_tokens_kept": 482.1036419992251,
+      "proxy_lower_linear": 0.8117405636817695,
+      "proxy_upper_squared": 0.6231692294662772
+     },
+     "1024": {
+      "pct_truncated": 1.0122045718713677,
+      "pct_response_cut": 0.7652072839984503,
+      "mean_tokens_kept": 593.913454087563,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0048430840759395586,
+      "pct_response_cut": 0.7652072839984503,
+      "mean_tokens_kept": 594.7783320418442,
+      "proxy_lower_linear": 1.0014562356658683,
+      "proxy_upper_squared": 1.0050708157629642
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.7652072839984503,
+      "mean_tokens_kept": 594.7790100736149,
+      "proxy_lower_linear": 1.0014573772998319,
+      "proxy_upper_squared": 1.0050763427855471
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.7652072839984503,
+      "mean_tokens_kept": 594.7790100736149,
+      "proxy_lower_linear": 1.0014573772998319,
+      "proxy_upper_squared": 1.0050763427855471
+     }
+    },
+    "pct_response_over_resp_max": 0.7652072839984503,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 98.98779542812863,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 98.98779542812863
+   },
+   "ragbench_covidqa": {
+    "describe": {
+     "n": 1445,
+     "mean": 572.4283737024222,
+     "sd": 124.64292443880652,
+     "skew": -0.8908623063244185,
+     "mean_2sd": 821.7142225800352,
+     "mean_2sd_pctile": 99.51557093425606,
+     "pct_above_mean_2sd": 0.4844290657439446,
+     "log_mean_2sd": 954.2321733922394,
+     "log_mean_2sd_pctile": 100.00000000000001,
+     "pct_above_log_mean_2sd": 0.0,
+     "p95": 745.0,
+     "pct_above_p95": 4.844290657439446,
+     "p50": 592.0,
+     "p90": 709.0,
+     "p97.5": 769.8999999999999,
+     "p99": 800.56,
+     "max": 883.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 74.53287197231833,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 485.10449826989617,
+      "proxy_lower_linear": 0.8474501274845585,
+      "proxy_upper_squared": 0.6988673551520929
+     },
+     "1024": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 572.4283737024222,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 572.4283737024222,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 572.4283737024222,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.0,
+      "mean_tokens_kept": 572.4283737024222,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     }
+    },
+    "pct_response_over_resp_max": 0.0,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 97.30103806228374,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 100.0
+   },
+   "medhallu": {
+    "describe": {
+     "n": 19998,
+     "mean": 384.21472147214723,
+     "sd": 90.3519358959616,
+     "skew": 0.6236695542518714,
+     "mean_2sd": 564.9185932640704,
+     "mean_2sd_pctile": 96.65966596659666,
+     "pct_above_mean_2sd": 3.34033403340334,
+     "log_mean_2sd": 605.9286742745672,
+     "log_mean_2sd_pctile": 98.11981198119813,
+     "pct_above_log_mean_2sd": 1.8801880188018802,
+     "p95": 535.1499999999978,
+     "pct_above_p95": 5.000500050005,
+     "p50": 380.0,
+     "p90": 494.0,
+     "p97.5": 586.0,
+     "p99": 649.0,
+     "max": 1032.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 7.280728072807281,
+      "pct_response_cut": 0.005000500050005001,
+      "mean_tokens_kept": 379.27567756775676,
+      "proxy_lower_linear": 0.9871461223882081,
+      "proxy_upper_squared": 0.9631395984873377
+     },
+     "1024": {
+      "pct_truncated": 0.005000500050005001,
+      "pct_response_cut": 0.005000500050005001,
+      "mean_tokens_kept": 384.2143214321432,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.005000500050005001,
+      "mean_tokens_kept": 384.21472147214723,
+      "proxy_lower_linear": 1.000001041189726,
+      "proxy_upper_squared": 1.0000052796596863
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.005000500050005001,
+      "mean_tokens_kept": 384.21472147214723,
+      "proxy_lower_linear": 1.000001041189726,
+      "proxy_upper_squared": 1.0000052796596863
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.005000500050005001,
+      "mean_tokens_kept": 384.21472147214723,
+      "proxy_lower_linear": 1.000001041189726,
+      "proxy_upper_squared": 1.0000052796596863
+     }
+    },
+    "pct_response_over_resp_max": 0.005000500050005001,
+    "window_95.0": 768,
+    "coverage_at_window_95.0": 99.81498149814982,
+    "window_97.5": 768,
+    "coverage_at_window_97.5": 99.81498149814982
+   },
+   "clinical pooled": {
+    "describe": {
+     "n": 42091,
+     "mean": 493.9697797628947,
+     "sd": 168.66541517193548,
+     "skew": 0.7804455964598064,
+     "mean_2sd": 831.3006101067656,
+     "mean_2sd_pctile": 96.09180109762181,
+     "pct_above_mean_2sd": 3.9081989023781807,
+     "log_mean_2sd": 922.4814221865661,
+     "log_mean_2sd_pctile": 98.42721721983321,
+     "pct_above_log_mean_2sd": 1.5727827801667815,
+     "p95": 805.0,
+     "pct_above_p95": 4.993941697750113,
+     "p50": 459.0,
+     "p90": 728.0,
+     "p97.5": 881.0,
+     "p99": 964.0999999999985,
+     "max": 1550.0
+    },
+    "coverage": {
+     "512": {
+      "pct_truncated": 39.25542277446485,
+      "pct_response_cut": 0.3777529638164928,
+      "mean_tokens_kept": 433.351714143166,
+      "proxy_lower_linear": 0.8780389357711218,
+      "proxy_upper_squared": 0.7191312758463858
+     },
+     "1024": {
+      "pct_truncated": 0.4989190088142358,
+      "pct_response_cut": 0.3777529638164928,
+      "mean_tokens_kept": 493.5449858639614,
+      "proxy_lower_linear": 1.0,
+      "proxy_upper_squared": 1.0
+     },
+     "1536": {
+      "pct_truncated": 0.0023758048038773133,
+      "pct_response_cut": 0.3777529638164928,
+      "mean_tokens_kept": 493.96944715022215,
+      "proxy_lower_linear": 1.0008600255263818,
+      "proxy_upper_squared": 1.003469885042275
+     },
+     "2048": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.3777529638164928,
+      "mean_tokens_kept": 493.9697797628947,
+      "proxy_lower_linear": 1.0008606994521272,
+      "proxy_upper_squared": 1.0034736655342302
+     },
+     "4096": {
+      "pct_truncated": 0.0,
+      "pct_response_cut": 0.3777529638164928,
+      "mean_tokens_kept": 493.9697797628947,
+      "proxy_lower_linear": 1.0008606994521272,
+      "proxy_upper_squared": 1.0034736655342302
+     }
+    },
+    "pct_response_over_resp_max": 0.3777529638164928,
+    "window_95.0": 1024,
+    "coverage_at_window_95.0": 99.50108099118576,
+    "window_97.5": 1024,
+    "coverage_at_window_97.5": 99.50108099118576
+   }
+  }
+ }
+}

@@ -1,0 +1,360 @@
+{
+ "summary_rows": 5658,
+ "summary_sources_in_rows": 943,
+ "positives": 1686,
+ "bootstrap": {
+  "resamples": 2000,
+  "seed": 0,
+  "unit": "source_id"
+ },
+ "N_distinct": 160,
+ "N_range": [
+  25,
+  200
+ ],
+ "ratio_summary": {
+  "mean": 0.946192642529324,
+  "p5": 0.5944287211740041,
+  "p50": 0.9313725490196079,
+  "p95": 1.3665539743690538
+ },
+ "rate_by_ratio": [
+  {
+   "bin": "< 0.8",
+   "n": 1598,
+   "positives": 589,
+   "rate": 0.3685857321652065
+  },
+  {
+   "bin": "0.8 to < 1.0",
+   "n": 1851,
+   "positives": 533,
+   "rate": 0.28795245813074016
+  },
+  {
+   "bin": "1.0 to < 1.2",
+   "n": 1469,
+   "positives": 324,
+   "rate": 0.2205582028590878
+  },
+  {
+   "bin": ">= 1.2",
+   "n": 740,
+   "positives": 240,
+   "rate": 0.32432432432432434
+  }
+ ],
+ "rate_by_N": {
+  "binning": "quartiles (160 distinct N values)",
+  "rows": [
+   {
+    "bin": "25 to 82",
+    "n": 1476,
+    "positives": 384,
+    "rate": 0.2601626016260163
+   },
+   {
+    "bin": ">82 to 103",
+    "n": 1404,
+    "positives": 393,
+    "rate": 0.2799145299145299
+   },
+   {
+    "bin": ">103 to 179",
+    "n": 1368,
+    "positives": 428,
+    "rate": 0.3128654970760234
+   },
+   {
+    "bin": ">179 to 200",
+    "n": 1410,
+    "positives": 481,
+    "rate": 0.34113475177304964
+   }
+  ]
+ },
+ "auroc": {
+  "all splits|N (word limit)": {
+   "n": 5658,
+   "positives": 1686,
+   "auroc": 0.544148899950902,
+   "ci95": [
+    0.5276650888345215,
+    0.5605850005884345
+   ]
+  },
+  "all splits|response words": {
+   "n": 5658,
+   "positives": 1686,
+   "auroc": 0.5162170931992512,
+   "ci95": [
+    0.49942557911359603,
+    0.532550852505684
+   ]
+  },
+  "all splits|ratio = words / N": {
+   "n": 5658,
+   "positives": 1686,
+   "auroc": 0.4444809544629727,
+   "ci95": [
+    0.42847580530670315,
+    0.460422223638915
+   ]
+  },
+  "train|N (word limit)": {
+   "n": 4308,
+   "positives": 1350,
+   "auroc": 0.5409676207647811,
+   "ci95": [
+    0.521621858331917,
+    0.5592984199398834
+   ]
+  },
+  "train|response words": {
+   "n": 4308,
+   "positives": 1350,
+   "auroc": 0.5145871835324167,
+   "ci95": [
+    0.49545712502675554,
+    0.5341580494643309
+   ]
+  },
+  "train|ratio = words / N": {
+   "n": 4308,
+   "positives": 1350,
+   "auroc": 0.44792965717576944,
+   "ci95": [
+    0.43007775726500613,
+    0.46683412027978266
+   ]
+  },
+  "val|N (word limit)": {
+   "n": 450,
+   "positives": 132,
+   "auroc": 0.5425242995997713,
+   "ci95": [
+    0.4906814101319877,
+    0.5947134427564578
+   ]
+  },
+  "val|response words": {
+   "n": 450,
+   "positives": 132,
+   "auroc": 0.5241328378120831,
+   "ci95": [
+    0.4659546862503707,
+    0.5754958440312519
+   ]
+  },
+  "val|ratio = words / N": {
+   "n": 450,
+   "positives": 132,
+   "auroc": 0.4676839146178769,
+   "ci95": [
+    0.4134893236682711,
+    0.5228293533335252
+   ]
+  },
+  "test|N (word limit)": {
+   "n": 900,
+   "positives": 204,
+   "auroc": 0.5554006085192698,
+   "ci95": [
+    0.5096499342754327,
+    0.5984382842853407
+   ]
+  },
+  "test|response words": {
+   "n": 900,
+   "positives": 204,
+   "auroc": 0.5147094038764932,
+   "ci95": [
+    0.4699082500487725,
+    0.561289760963674
+   ]
+  },
+  "test|ratio = words / N": {
+   "n": 900,
+   "positives": 204,
+   "auroc": 0.41760339193148527,
+   "ci95": [
+    0.37657892429744927,
+    0.4644737818750497
+   ]
+  }
+ },
+ "generators": [
+  {
+   "model": "gpt-3.5-turbo-0613",
+   "n": 943,
+   "positives": 54,
+   "rate": 0.05726405090137858,
+   "mean_words": 140.76564156945918,
+   "mean_ratio": 1.1446624286627036,
+   "auroc_words": 0.5684706078406866,
+   "auroc_ratio": 0.5471086947464899
+  },
+  {
+   "model": "gpt-4-0613",
+   "n": 943,
+   "positives": 74,
+   "rate": 0.0784729586426299,
+   "mean_words": 107.74443266171792,
+   "mean_ratio": 0.9159958965146504,
+   "auroc_words": 0.5961496594407987,
+   "auroc_ratio": 0.4376263490187541
+  },
+  {
+   "model": "llama-2-13b-chat",
+   "n": 943,
+   "positives": 295,
+   "rate": 0.31283138918345704,
+   "mean_words": 97.57051961823966,
+   "mean_ratio": 0.8415147312614487,
+   "auroc_words": 0.5254132663737183,
+   "auroc_ratio": 0.4924591964846202
+  },
+  {
+   "model": "llama-2-70b-chat",
+   "n": 943,
+   "positives": 212,
+   "rate": 0.22481442205726404,
+   "mean_words": 108.75715800636267,
+   "mean_ratio": 0.9046532995768175,
+   "auroc_words": 0.5532612342874842,
+   "auroc_ratio": 0.4773023513925096
+  },
+  {
+   "model": "llama-2-7b-chat",
+   "n": 943,
+   "positives": 434,
+   "rate": 0.4602332979851538,
+   "mean_words": 103.62990455991516,
+   "mean_ratio": 0.8788367940102633,
+   "auroc_words": 0.5407843155007107,
+   "auroc_ratio": 0.5164549627443347
+  },
+  {
+   "model": "mistral-7B-instruct",
+   "n": 943,
+   "positives": 617,
+   "rate": 0.6542948038176034,
+   "mean_words": 112.76246023329799,
+   "mean_ratio": 0.9914927051500605,
+   "auroc_words": 0.574497121436597,
+   "auroc_ratio": 0.49173220908611825
+  }
+ ],
+ "stratified": {
+  "response words": {
+   "pooled_raw": 0.5162170931992512,
+   "weighted_within_generator": 0.5528976981051503,
+   "pooled_within_generator_rank": 0.5417322951048801,
+   "pooled_within_generator_rank_ci95": [
+    0.524285259786092,
+    0.5583649751031059
+   ]
+  },
+  "ratio = words / N": {
+   "pooled_raw": 0.4444809544629727,
+   "weighted_within_generator": 0.4946206211981483,
+   "pooled_within_generator_rank": 0.4957683469936053,
+   "pooled_within_generator_rank_ci95": [
+    0.47984611517188336,
+    0.5117193663926046
+   ]
+  },
+  "generator identity (in-sample rate)": {
+   "pooled_raw": 0.7800784315833611
+  }
+ },
+ "prediction_correlations": [
+  {
+   "run": "run_seed42_20261110_120515",
+   "n": 900,
+   "positives": 204,
+   "prob_auroc": 0.7272298287130944,
+   "all|words|pearson": -0.021625845707377092,
+   "all|words|spearman": 0.0052926568168592,
+   "all|n": 900,
+   "all|ratio|pearson": -0.1146946402740321,
+   "all|ratio|spearman": -0.22550094549441005,
+   "label 0|words|pearson": -0.006239206508963707,
+   "label 0|words|spearman": 0.022476226598238697,
+   "label 0|n": 696,
+   "label 0|ratio|pearson": -0.11493835539182484,
+   "label 0|ratio|spearman": -0.21563818182576605,
+   "label 1|words|pearson": -0.07756418906510848,
+   "label 1|words|spearman": -0.09152054097933159,
+   "label 1|n": 204,
+   "label 1|ratio|pearson": -0.04332890033879628,
+   "label 1|ratio|spearman": -0.08088441867686315
+  },
+  {
+   "run": "run_seed43_20261110_135827",
+   "n": 900,
+   "positives": 204,
+   "prob_auroc": 0.6201895988280369,
+   "all|words|pearson": 0.2334657177910545,
+   "all|words|spearman": 0.2652235421982263,
+   "all|n": 900,
+   "all|ratio|pearson": -0.2685315204993611,
+   "all|ratio|spearman": -0.28569482055824935,
+   "label 0|words|pearson": 0.24373082981687302,
+   "label 0|words|spearman": 0.268327571769003,
+   "label 0|n": 696,
+   "label 0|ratio|pearson": -0.22936921567855023,
+   "label 0|ratio|spearman": -0.23912131423069488,
+   "label 1|words|pearson": 0.2128254906036418,
+   "label 1|words|spearman": 0.24688458433376523,
+   "label 1|n": 204,
+   "label 1|ratio|pearson": -0.3392365999063295,
+   "label 1|ratio|spearman": -0.34965267754825624
+  },
+  {
+   "run": "run_seed44_20261110_151337",
+   "n": 900,
+   "positives": 204,
+   "prob_auroc": 0.6426357899481632,
+   "all|words|pearson": 0.34007590393499376,
+   "all|words|spearman": 0.3811798882706515,
+   "all|n": 900,
+   "all|ratio|pearson": -0.29161751898264465,
+   "all|ratio|spearman": -0.3558445617644279,
+   "label 0|words|pearson": 0.3709682471395825,
+   "label 0|words|spearman": 0.4087099222466716,
+   "label 0|n": 696,
+   "label 0|ratio|pearson": -0.23134336972207972,
+   "label 0|ratio|spearman": -0.30233587547644086,
+   "label 1|words|pearson": 0.2853263391920908,
+   "label 1|words|spearman": 0.30910243706410173,
+   "label 1|n": 204,
+   "label 1|ratio|pearson": -0.401010237632082,
+   "label 1|ratio|spearman": -0.4265466955204055
+  }
+ ],
+ "summary_test_length_auroc": {
+  "N (word limit)": 0.5554006085192698,
+  "response words": 0.5147094038764932,
+  "ratio = words / N": 0.41760339193148527
+ },
+ "qa_instruction": {
+  "qa_sources": 989,
+  "line1_counts": {
+   "Briefly answer the following question:": 989
+  },
+  "distinct_templates": 1,
+  "templates": {
+   "Briefly answer the following question:\n{question}\nBear in mind that your response should be strictly based on the following three passages:\n{passages}In case the passages do not contain the necessary information to answer the question, please reply with: \"Unable to answer based on given passages.\"\noutput:": 989
+  },
+  "passage_count_words": {
+   "three": 989
+  },
+  "distinct_templates_count_word_masked": 1,
+  "templates_masked": {
+   "Briefly answer the following question:\n{question}\nBear in mind that your response should be strictly based on the following {k} passages:\n{passages}In case the passages do not contain the necessary information to answer the question, please reply with: \"Unable to answer based on given passages.\"\noutput:": 989
+  },
+  "unified_v2_qa_rows": 5934,
+  "unified_v2_query_equals_question": 5934
+ }
+}

@@ -1,0 +1,591 @@
+{
+ "build_clinical_sha": "ef2537212375d5cdc87f7e0c88c11a70961702fd",
+ "seed": 42,
+ "val_frac": 0.1,
+ "training_parts": {
+  "ragbench_pubmedqa train": 19600,
+  "ragbench_covidqa train": 1252,
+  "pqa_artificial train (90%)": 16262,
+  "unified_v2 train": 25008
+ },
+ "hm_auroc": 0.75,
+ "variants": {
+  "0": {
+   "main": {
+    "ragbench_pubmedqa": {
+     "rows": 2450,
+     "positives": 725,
+     "removed": 1938,
+     "positives_removed": 581,
+     "q_only": 0,
+     "p_only": 1934,
+     "both": 4,
+     "removed_if_whole_groups": 1938,
+     "prevalence_before": 0.29591836734693877,
+     "rows_after": 512,
+     "positives_after": 144,
+     "negatives_after": 368,
+     "prevalence_after": 0.28125,
+     "pct_removed": 79.10204081632654,
+     "hm_se_before": 0.011516607803555743,
+     "hm_se_after": 0.025714822627101112
+    },
+    "ragbench_covidqa": {
+     "rows": 246,
+     "positives": 39,
+     "removed": 141,
+     "positives_removed": 19,
+     "q_only": 0,
+     "p_only": 130,
+     "both": 11,
+     "removed_if_whole_groups": 141,
+     "prevalence_before": 0.15853658536585366,
+     "rows_after": 105,
+     "positives_after": 20,
+     "negatives_after": 85,
+     "prevalence_after": 0.19047619047619047,
+     "pct_removed": 57.31707317073171,
+     "hm_se_before": 0.04743654308432306,
+     "hm_se_after": 0.0670820393249937
+    },
+    "medhallu": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 44,
+     "positives_removed": 22,
+     "q_only": 0,
+     "p_only": 42,
+     "both": 2,
+     "removed_if_whole_groups": 44,
+     "prevalence_before": 0.5,
+     "rows_after": 1956,
+     "positives_after": 978,
+     "negatives_after": 978,
+     "prevalence_after": 0.5,
+     "pct_removed": 2.2,
+     "hm_se_before": 0.010859410007651693,
+     "hm_se_after": 0.010980944282897268
+    }
+   },
+   "by_part": {
+    "ragbench_pubmedqa": {
+     "ragbench_pubmedqa train": {
+      "removed": 1938,
+      "q_only": 0,
+      "p_only": 1934,
+      "both": 4
+     },
+     "ragbench_covidqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    },
+    "ragbench_covidqa": {
+     "ragbench_pubmedqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "ragbench_covidqa train": {
+      "removed": 141,
+      "q_only": 0,
+      "p_only": 130,
+      "both": 11
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    },
+    "medhallu": {
+     "ragbench_pubmedqa train": {
+      "removed": 12,
+      "q_only": 0,
+      "p_only": 10,
+      "both": 2
+     },
+     "ragbench_covidqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 40,
+      "q_only": 0,
+      "p_only": 40,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    }
+   },
+   "d4_d5": {
+    "D4a: MedHallu test x RAGBench PubMedQA train (remove from test)": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 12,
+     "positives_removed": 6,
+     "q_only": 0,
+     "p_only": 10,
+     "both": 2,
+     "removed_if_whole_groups": 12
+    },
+    "D4b: RAGBench PubMedQA val x pqa_artificial train (remove from val)": {
+     "rows": 2449,
+     "positives": 735,
+     "removed": 6,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 6,
+     "both": 0,
+     "removed_if_whole_groups": 6
+    },
+    "D5: MedHallu test x pqa_artificial train (remove from test)": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 40,
+     "positives_removed": 20,
+     "q_only": 0,
+     "p_only": 40,
+     "both": 0,
+     "removed_if_whole_groups": 40
+    },
+    "D5 (reported): MedHallu test x pqa_artificial val": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 14,
+     "positives_removed": 7,
+     "q_only": 0,
+     "p_only": 14,
+     "both": 0,
+     "removed_if_whole_groups": 14
+    }
+   },
+   "train_x_val": {
+    "ragbench_pubmedqa": {
+     "same_source_train": {
+      "rows": 2449,
+      "positives": 735,
+      "removed": 1941,
+      "positives_removed": 593,
+      "q_only": 0,
+      "p_only": 1939,
+      "both": 2,
+      "removed_if_whole_groups": 1941
+     },
+     "all_training_data": {
+      "rows": 2449,
+      "positives": 735,
+      "removed": 1945,
+      "positives_removed": 593,
+      "q_only": 0,
+      "p_only": 1943,
+      "both": 2,
+      "removed_if_whole_groups": 1945
+     }
+    },
+    "ragbench_covidqa": {
+     "same_source_train": {
+      "rows": 267,
+      "positives": 36,
+      "removed": 179,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 171,
+      "both": 8,
+      "removed_if_whole_groups": 179
+     },
+     "all_training_data": {
+      "rows": 267,
+      "positives": 36,
+      "removed": 179,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 171,
+      "both": 8,
+      "removed_if_whole_groups": 179
+     }
+    },
+    "medhallu": {
+     "same_source_train": {
+      "rows": 1738,
+      "positives": 869,
+      "removed": 38,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 38,
+      "both": 0,
+      "removed_if_whole_groups": 38
+     },
+     "all_training_data": {
+      "rows": 1738,
+      "positives": 869,
+      "removed": 38,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 38,
+      "both": 0,
+      "removed_if_whole_groups": 38
+     }
+    }
+   },
+   "general_test": {
+    "halueval": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "ragtruth qa": {
+     "rows": 900,
+     "positives": 160,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "ragtruth summary": {
+     "rows": 900,
+     "positives": 204,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    }
+   },
+   "d5_shared_passages": [
+    "Case series.",
+    "Cross-sectional analysis.",
+    "Cross-sectional.",
+    "Death.",
+    "None.",
+    "Not applicable.",
+    "Observational study.",
+    "Prospective cohort study.",
+    "Prospective observational study.",
+    "Prospective study.",
+    "Randomized controlled trial.",
+    "Retrospective cohort study.",
+    "Retrospective review.",
+    "University research laboratory."
+   ]
+  },
+  "8": {
+   "main": {
+    "ragbench_pubmedqa": {
+     "rows": 2450,
+     "positives": 725,
+     "removed": 1928,
+     "positives_removed": 577,
+     "q_only": 0,
+     "p_only": 1924,
+     "both": 4,
+     "removed_if_whole_groups": 1928,
+     "prevalence_before": 0.29591836734693877,
+     "rows_after": 522,
+     "positives_after": 148,
+     "negatives_after": 374,
+     "prevalence_after": 0.2835249042145594,
+     "pct_removed": 78.6938775510204,
+     "hm_se_before": 0.011516607803555743,
+     "hm_se_after": 0.02538659545977075
+    },
+    "ragbench_covidqa": {
+     "rows": 246,
+     "positives": 39,
+     "removed": 141,
+     "positives_removed": 19,
+     "q_only": 0,
+     "p_only": 130,
+     "both": 11,
+     "removed_if_whole_groups": 141,
+     "prevalence_before": 0.15853658536585366,
+     "rows_after": 105,
+     "positives_after": 20,
+     "negatives_after": 85,
+     "prevalence_after": 0.19047619047619047,
+     "pct_removed": 57.31707317073171,
+     "hm_se_before": 0.04743654308432306,
+     "hm_se_after": 0.0670820393249937
+    },
+    "medhallu": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 2,
+     "positives_removed": 1,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 2,
+     "removed_if_whole_groups": 2,
+     "prevalence_before": 0.5,
+     "rows_after": 1998,
+     "positives_after": 999,
+     "negatives_after": 999,
+     "prevalence_after": 0.5,
+     "pct_removed": 0.1,
+     "hm_se_before": 0.010859410007651693,
+     "hm_se_after": 0.010864846999713462
+    }
+   },
+   "by_part": {
+    "ragbench_pubmedqa": {
+     "ragbench_pubmedqa train": {
+      "removed": 1928,
+      "q_only": 0,
+      "p_only": 1924,
+      "both": 4
+     },
+     "ragbench_covidqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    },
+    "ragbench_covidqa": {
+     "ragbench_pubmedqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "ragbench_covidqa train": {
+      "removed": 141,
+      "q_only": 0,
+      "p_only": 130,
+      "both": 11
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    },
+    "medhallu": {
+     "ragbench_pubmedqa train": {
+      "removed": 2,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 2
+     },
+     "ragbench_covidqa train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "pqa_artificial train (90%)": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     },
+     "unified_v2 train": {
+      "removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0
+     }
+    }
+   },
+   "d4_d5": {
+    "D4a: MedHallu test x RAGBench PubMedQA train (remove from test)": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 2,
+     "positives_removed": 1,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 2,
+     "removed_if_whole_groups": 2
+    },
+    "D4b: RAGBench PubMedQA val x pqa_artificial train (remove from val)": {
+     "rows": 2449,
+     "positives": 735,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "D5: MedHallu test x pqa_artificial train (remove from test)": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "D5 (reported): MedHallu test x pqa_artificial val": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    }
+   },
+   "train_x_val": {
+    "ragbench_pubmedqa": {
+     "same_source_train": {
+      "rows": 2449,
+      "positives": 735,
+      "removed": 1923,
+      "positives_removed": 590,
+      "q_only": 0,
+      "p_only": 1921,
+      "both": 2,
+      "removed_if_whole_groups": 1923
+     },
+     "all_training_data": {
+      "rows": 2449,
+      "positives": 735,
+      "removed": 1923,
+      "positives_removed": 590,
+      "q_only": 0,
+      "p_only": 1921,
+      "both": 2,
+      "removed_if_whole_groups": 1923
+     }
+    },
+    "ragbench_covidqa": {
+     "same_source_train": {
+      "rows": 267,
+      "positives": 36,
+      "removed": 179,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 171,
+      "both": 8,
+      "removed_if_whole_groups": 179
+     },
+     "all_training_data": {
+      "rows": 267,
+      "positives": 36,
+      "removed": 179,
+      "positives_removed": 19,
+      "q_only": 0,
+      "p_only": 171,
+      "both": 8,
+      "removed_if_whole_groups": 179
+     }
+    },
+    "medhallu": {
+     "same_source_train": {
+      "rows": 1738,
+      "positives": 869,
+      "removed": 0,
+      "positives_removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0,
+      "removed_if_whole_groups": 0
+     },
+     "all_training_data": {
+      "rows": 1738,
+      "positives": 869,
+      "removed": 0,
+      "positives_removed": 0,
+      "q_only": 0,
+      "p_only": 0,
+      "both": 0,
+      "removed_if_whole_groups": 0
+     }
+    }
+   },
+   "general_test": {
+    "halueval": {
+     "rows": 2000,
+     "positives": 1000,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "ragtruth qa": {
+     "rows": 900,
+     "positives": 160,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    },
+    "ragtruth summary": {
+     "rows": 900,
+     "positives": 204,
+     "removed": 0,
+     "positives_removed": 0,
+     "q_only": 0,
+     "p_only": 0,
+     "both": 0,
+     "removed_if_whole_groups": 0
+    }
+   },
+   "d5_shared_passages": []
+  }
+ }
+}

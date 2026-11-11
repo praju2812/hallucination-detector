@@ -1,0 +1,220 @@
+{
+ "bootstrap": {
+  "resamples": 2000,
+  "seed": 0,
+  "unit": "group_id"
+ },
+ "sources": {
+  "halueval": {
+   "n": 20000,
+   "positives": 10000,
+   "groups": 10000,
+   "features": {
+    "q-a Jaccard": {
+     "auroc": 0.915499365,
+     "ci95": [
+      0.9118372634999999,
+      0.9189782045
+     ],
+     "mean_label0": 0.03872253572425445,
+     "mean_label1": 0.38929845337055596
+    },
+    "q-a TF-IDF cosine": {
+     "auroc": 0.9040337649999999,
+     "ci95": [
+      0.9001523686249999,
+      0.9078146498749999
+     ],
+     "mean_label0": 0.07687977590857673,
+     "mean_label1": 0.5394020247006581
+    },
+    "ctx-a Jaccard": {
+     "auroc": 0.768954085,
+     "ci95": [
+      0.7626457197500001,
+      0.7748426718749999
+     ],
+     "mean_label0": 0.07079545448822053,
+     "mean_label1": 0.15286688146895572
+    },
+    "ctx-a TF-IDF cosine": {
+     "auroc": 0.589239325,
+     "ci95": [
+      0.5814636559999999,
+      0.5966924946250001
+     ],
+     "mean_label0": 0.30411604027828026,
+     "mean_label1": 0.3548024859935599
+    },
+    "answer words": {
+     "auroc": 0.97176603,
+     "ci95": [
+      0.9695199324999999,
+      0.97408747175
+     ],
+     "mean_label0": 2.2247,
+     "mean_label1": 10.9865
+    }
+   },
+   "stratified": {
+    "q-a Jaccard": {
+     "pooled_raw": 0.915499365,
+     "weighted_within_decile": 0.6253027659155018,
+     "pooled_within_decile_rank": 0.5329282799999999,
+     "rank_ci95": [
+      0.5251424008749999,
+      0.5403608128749999
+     ]
+    },
+    "q-a TF-IDF cosine": {
+     "pooled_raw": 0.9040337649999999,
+     "weighted_within_decile": 0.6232877465274902,
+     "pooled_within_decile_rank": 0.53207618,
+     "rank_ci95": [
+      0.5244424613750002,
+      0.539378854625
+     ]
+    },
+    "ctx-a Jaccard": {
+     "pooled_raw": 0.768954085,
+     "weighted_within_decile": 0.2064458634389224,
+     "pooled_within_decile_rank": 0.44342554999999995,
+     "rank_ci95": [
+      0.43713969425,
+      0.44969720649999995
+     ]
+    },
+    "ctx-a TF-IDF cosine": {
+     "pooled_raw": 0.589239325,
+     "weighted_within_decile": 0.20481798134558885,
+     "pooled_within_decile_rank": 0.443339225,
+     "rank_ci95": [
+      0.435632363125,
+      0.4508200520000001
+     ]
+    }
+   },
+   "length_deciles_nonempty": 8,
+   "decile_sizes": {
+    "0": "77/3587",
+    "2": "164/3602",
+    "4": "358/2906",
+    "5": "2013/2364",
+    "6": "1711/1783",
+    "7": "1841/1878",
+    "8": "1861/1879",
+    "9": "1975/2001"
+   }
+  },
+  "ragtruth_qa": {
+   "n": 5934,
+   "positives": 1724,
+   "groups": 989,
+   "features": {
+    "q-a Jaccard": {
+     "auroc": 0.42648745391317766,
+     "ci95": [
+      0.4072866933189184,
+      0.4449762026383601
+     ],
+     "mean_label0": 0.08784275452304245,
+     "mean_label1": 0.07512407227153362
+    },
+    "q-a TF-IDF cosine": {
+     "auroc": 0.5569174322544379,
+     "ci95": [
+      0.5387791571078455,
+      0.576022985507107
+     ],
+     "mean_label0": 0.46676983227279945,
+     "mean_label1": 0.5119731921444867
+    },
+    "ctx-a Jaccard": {
+     "auroc": 0.42030968415715536,
+     "ci95": [
+      0.40238617121375847,
+      0.43862779298367166
+     ],
+     "mean_label0": 0.34131373749524624,
+     "mean_label1": 0.3009362078593146
+    },
+    "ctx-a TF-IDF cosine": {
+     "auroc": 0.42990366545238107,
+     "ci95": [
+      0.4121535727517466,
+      0.44813989698014617
+     ],
+     "mean_label0": 0.657499119654419,
+     "mean_label1": 0.6429289209795538
+    },
+    "answer words": {
+     "auroc": 0.708977354767954,
+     "ci95": [
+      0.6921713319878302,
+      0.7262726123363022
+     ],
+     "mean_label0": 105.45368171021377,
+     "mean_label1": 151.5052204176334
+    }
+   },
+   "stratified": {
+    "q-a Jaccard": {
+     "pooled_raw": 0.42648745391317766,
+     "weighted_within_decile": 0.49184181201324806,
+     "pooled_within_decile_rank": 0.4934562223410177,
+     "rank_ci95": [
+      0.4731314334887172,
+      0.513724649559997
+     ]
+    },
+    "q-a TF-IDF cosine": {
+     "pooled_raw": 0.5569174322544379,
+     "weighted_within_decile": 0.5183332246920018,
+     "pooled_within_decile_rank": 0.5161617323685183,
+     "rank_ci95": [
+      0.4974703219558295,
+      0.5356364381907921
+     ]
+    },
+    "ctx-a Jaccard": {
+     "pooled_raw": 0.42030968415715536,
+     "weighted_within_decile": 0.31418995471208494,
+     "pooled_within_decile_rank": 0.335161696546175,
+     "rank_ci95": [
+      0.3180430473656044,
+      0.35278213764688243
+     ]
+    },
+    "ctx-a TF-IDF cosine": {
+     "pooled_raw": 0.42990366545238107,
+     "weighted_within_decile": 0.323125704228631,
+     "pooled_within_decile_rank": 0.3432163504196725,
+     "rank_ci95": [
+      0.32520577687563057,
+      0.3609682084391419
+     ]
+    }
+   },
+   "length_deciles_nonempty": 10,
+   "decile_sizes": {
+    "0": "46/599",
+    "1": "96/605",
+    "2": "100/553",
+    "3": "127/638",
+    "4": "130/568",
+    "5": "153/583",
+    "6": "196/623",
+    "7": "236/582",
+    "8": "289/593",
+    "9": "351/590"
+   }
+  }
+ },
+ "qa_instruction": {
+  "qa_sources": 989,
+  "distinct_templates": 1,
+  "template": "Briefly answer the following question:\n{question}\nBear in mind that your response should be strictly based on the following three passages:\n{passages}In case the passages do not contain the necessary information to answer the question, please reply with: \"Unable to answer based on given passages.\"\noutput:",
+  "line1_tokens": 8,
+  "fixed_text_tokens": 59
+ }
+}
