@@ -1,0 +1,3 @@
+# Data building only (scripts/build_clinical.py). Local .venv; Kaggle training does not install this.
+# Note: datasets 5.0.0 pulls huggingface_hub 1.x (within transformers 5.22.2's range >=1.31,<3.0).
+datasets==5.0.0
