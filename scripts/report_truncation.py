@@ -14,7 +14,11 @@ Definitions (all from the real Collator.encode_with_response_budget output):
     resp overflow cut  : kept response shorter than min(response length, resp_max)
 At max_length 1024 the last two "must be 0" columns (ctx 0 tokens, resp overflow cut) are checked.
 
+Splits: train, val, test, plus test_full when the data dir has one (data/clinical: test = clean test,
+test_full = full official test sets). Each split is read from {split}.jsonl or {split}.jsonl.gz (utils.io).
+
 Run:  python -m scripts.report_truncation --config configs/base.yaml --data-dir data/unified_v2
+      python -m scripts.report_truncation --config configs/base.yaml --data-dir data/clinical
 """
 
 from __future__ import annotations
@@ -32,6 +36,16 @@ from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
 from utils.io import read_jsonl
 
 SPLITS = ("train", "val", "test")
+OPTIONAL_SPLITS = ("test_full",)
+
+
+def split_path(data_dir: str, split: str) -> str | None:
+    """{split}.jsonl or {split}.jsonl.gz in data_dir; None if neither exists; error if both do (which one is current?)."""
+    plain = os.path.join(data_dir, f"{split}.jsonl")
+    gz = plain + ".gz"
+    if os.path.exists(plain) and os.path.exists(gz):
+        raise FileExistsError(f"both {plain} and {gz} exist; remove the stale one")
+    return plain if os.path.exists(plain) else gz if os.path.exists(gz) else None
 
 
 def split_output(out: list[int], sep_id: int) -> tuple[list[int], list[int]]:
@@ -70,9 +84,15 @@ def main() -> None:
     tok = build_tokenizer(m["name"])
     coll = Collator(tok, m["max_length"], m["resp_max"])
 
+    splits = list(SPLITS)
+    for sp in OPTIONAL_SPLITS:
+        if split_path(args.data_dir, sp):
+            splits.append(sp)
     groups = defaultdict(list)
-    for sp in SPLITS:
-        path = os.path.join(args.data_dir, f"{sp}.jsonl")
+    for sp in splits:
+        path = split_path(args.data_dir, sp)
+        if path is None:
+            raise FileNotFoundError(f"{args.data_dir}: no {sp}.jsonl or {sp}.jsonl.gz")
         rows = read_jsonl(path)[: args.limit]
         for r in rows:
             s = row_stats(coll, tok, r[d["query_col"]], r[d["context_col"]], r[d["response_col"]])
@@ -86,7 +106,7 @@ def main() -> None:
           "| query tok p50 / p99 | query head tok p50 / p99 |")
     print("|---|---|---|---|---|---|---|---|---|")
     must_be_zero = 0
-    for (sp, src), st in sorted(groups.items(), key=lambda kv: (SPLITS.index(kv[0][0]), kv[0][1])):
+    for (sp, src), st in sorted(groups.items(), key=lambda kv: (splits.index(kv[0][0]), kv[0][1])):
         n = len(st)
         col = lambda k: sum(x[k] for x in st)
         qb = np.percentile([x["q_bare"] for x in st], [50, 99])
