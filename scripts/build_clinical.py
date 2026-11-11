@@ -1,29 +1,40 @@
-"""Build the clinical dataset: data/clinical/{train,val,test}.jsonl.
+"""Build the clinical dataset under data/clinical/:
+
+    train.jsonl(.gz)    clinical training data, never reduced for overlap
+    val.jsonl           validation rows that share nothing with the training data
+    test.jsonl          CLEAN test: test rows that share nothing with the training data
+    test_full.jsonl     FULL official test sets (RQ1 reports G on both full and clean test)
+    removed_val.jsonl   validation rows removed for overlap, with `removed_by`
+    removed_test.jsonl  test rows removed for overlap (test_full = test + removed_test), with `removed_by`
+    handcheck/          D8 hand-check sample, drawn from the FULL test set
+    build_report.json
 
 Sources (revisions pinned in REVISIONS):
     ragbench_pubmedqa, ragbench_covidqa : RAGBench official train / validation / test
     medhallu                            : MedHallu pqa_labeled = test; pqa_artificial = train/val (90/10)
 
 Row schema: the unified schema (scripts/build_dataset.KEEP) plus
-    difficulty, category : MedHallu only (null on RAGBench rows)
-    shares_passage_with_train : test rows only; True if any passage (of >= 8 words) also appears in the final
-                                training data (clinical train after dedup + data/unified_v2/train.jsonl)
+    difficulty, category      : MedHallu only (null on RAGBench rows)
+    shares_passage_with_train : test files only; True if any passage (of >= 8 words) also appears in the training
+                                data (clinical train + data/unified_v2/train.jsonl). Always False in the clean test.
+    removed_by                : removed_* files only; why the row was removed (see REMOVED_BY_VALUES)
 
 Overlap keys (overlap_keys): the normalised question, plus each passage whose normalised text has at least
 min_words words (default 8, used everywhere in build() and the audit), so boilerplate passages such as "None."
-are not counted as overlap.
+are not counted as overlap. RAGTruth Summary rows give no question key (their query is the constant
+"Summarize the following news"); see training_keys.
 
-Decisions in the order build() applies them:
+Rule (supervisor decision, 10-11 Nov; CLAUDE.md hard rule 6): training data is never reduced for overlap.
+Steps, in the order build() applies them:
     -  drop unlabelled rows only where expected (RAGBench PubMedQA validation: 1); a test row never
     -  contexts joined in RAGTruth QA style: "passage 1:{p1}\\n\\npassage 2:{p2}"
     -  group_id = sha1 of the normalised question, no source prefix
-        pqa_artificial: 90/10 train/val by group_id, hashlib.sha1, then the dedup rules
-    -  pqa_labeled x RAGBench PubMedQA train          -> drop from RAGBench train   (question OR passage)
-        pqa_artificial x RAGBench PubMedQA validation  -> drop from pqa_artificial   (question OR passage)
-    -  pqa_artificial x pqa_labeled                   -> drop from pqa_artificial   (question OR passage)
-    -  within RAGBench: train/val rows whose question is in test -> dropped (passage sharing kept, flagged)
-    -  within RAGBench: train rows whose question is in val      -> dropped from train
-    Test sets are never edited.
+    -  pqa_artificial: 90/10 train/val by group_id (hashlib.sha1)
+    -  training data = RAGBench PubMedQA train + RAGBench CovidQA train + pqa_artificial train
+                       + data/unified_v2/train.jsonl
+    -  validation and test: every GROUP with a row sharing a question or an 8+ word passage with the training data
+       is removed (drop_overlap) and saved to removed_{split}.jsonl; the full test set is kept as test_full
+    -  val x test passage sharing is reported only (no row removed); val x test question sharing must be 0 (rule 2)
 
 Needs `datasets` (requirements-data.txt, local only). Training never does: it reads the JSONL files.
 Run:  python -m scripts.build_clinical --out-dir data/clinical
@@ -60,6 +71,12 @@ RAGBENCH_COLS = ["id", "question", "documents", "response", "adherence_score",
 SPLITS = ("train", "val", "test")
 COLUMNS = KEEP + ("difficulty", "category")
 TEST_FLAG = "shares_passage_with_train"
+REMOVED_BY = "removed_by"
+# removed_by values: which key kind matched which part of the training data; "group" = only another row of the
+# same group matched (drop_overlap removes whole groups)
+REMOVED_BY_VALUES = ("question:clinical_train", "passage:clinical_train", "question:general_train",
+                     "passage:general_train", "group")
+OUT_SPLITS = ("train", "val", "test", "test_full")  # splits returned by build(); "test" is the clean test
 EXPECTED_UNLABELLED = {("ragbench_pubmedqa", "val"): 1}  # measured 9 Nov; any other count raises
 MAX_PLAIN_MB = 90  # GitHub limit is 100 MB; above this a split is written as .jsonl.gz
 
@@ -357,6 +374,17 @@ def p_keys(row: dict) -> set[str]:
     return {k for k in overlap_keys(row) if k.startswith("p:")}
 
 
+def is_constant_query(row: dict) -> bool:
+    """RAGTruth Summary rows all have the query "Summarize the following news", so it identifies nothing."""
+    return row.get("source") == "ragtruth" and row.get("task") == "summary"
+
+
+def training_keys(row: dict) -> set[str]:
+    """overlap_keys at the default min_words, without the question key of a constant-query row."""
+    keys = overlap_keys(row)
+    return {k for k in keys if not k.startswith("q:")} if is_constant_query(row) else keys
+
+
 def key_union(rows: list[dict], keys=overlap_keys) -> set[str]:
     out = set()
     for r in rows:
@@ -371,17 +399,6 @@ def passage_key(text: str) -> str | None:
     if len(keys) > 1:
         raise ValueError(f"one passage gave {len(keys)} passage keys: {text[:80]!r}")
     return next(iter(keys), None)
-
-
-def shared_stats(rows: list[dict], reference: list[dict]) -> dict:
-    """Shared question keys, shared passage keys, and rows of `rows` touching `reference` (any key)."""
-    ref = key_union(reference)
-    mine = key_union(rows)
-    return {
-        "q": sum(k.startswith("q:") for k in mine & ref),
-        "p": sum(k.startswith("p:") for k in mine & ref),
-        "rows": sum(bool(overlap_keys(r) & ref) for r in rows),
-    }
 
 
 def git_sha() -> str | None:
@@ -424,9 +441,17 @@ def drop_unlabelled(rows: list[dict], source: str, split: str,
 
 
 def build(raw: dict, general_train: list[dict], seed: int, val_frac: float = 0.1,
-          expected_unlabelled: dict = EXPECTED_UNLABELLED) -> tuple[dict, dict]:
-    """All rules in order; no file I/O. Returns ({"train","val","test"} -> rows, report)."""
-    report = {"unlabelled": {}, "rules": [], "flag": {}, "d5_passages": [], "pqa_artificial_duplicates": []}
+          expected_unlabelled: dict = EXPECTED_UNLABELLED) -> tuple[dict, dict, dict]:
+    """All rules in order; no file I/O.
+
+    Returns (splits, removed, report):
+        splits  = {"train", "val", "test" (clean), "test_full"} -> rows; train is never reduced for overlap
+        removed = {"val", "test"} -> rows removed for overlap, each with `removed_by`, in original order
+        report  = counts for build_report.json
+    Invariants: test_full == test + removed["test"] as row sets; val + removed["val"] == validation after D7.
+    """
+    report = {"unlabelled": {}, "removals": [], "flag": {}, "medhallu_shared_passages": [],
+              "pqa_artificial_duplicates": []}
 
     # rows + D7
     rb = {}
@@ -439,7 +464,7 @@ def build(raw: dict, general_train: list[dict], seed: int, val_frac: float = 0.1
     mh_test = medhallu_rows(raw["pqa_labeled"])
     mh_art = medhallu_rows(raw["pqa_artificial"])
 
-    # pqa_artificial split (before dedup, as decided)
+    # pqa_artificial split
     mh_train, mh_val = split_pqa_artificial(mh_art, seed, val_frac)
     per_group = Counter(r["group_id"] for r in mh_art)
     for gid, n in per_group.items():
@@ -448,111 +473,128 @@ def build(raw: dict, general_train: list[dict], seed: int, val_frac: float = 0.1
             q = next(r["query"] for r in mh_art if r["group_id"] == gid)
             report["pqa_artificial_duplicates"].append({"question": q, "records": n // 2, "splits_after_split": where})
 
-    def apply(rule, rows, reference, source, split, keys=overlap_keys):
-        stats = shared_stats(rows, reference)
-        kept, removed = drop_overlap(rows, reference, keys)
-        report["rules"].append({"rule": rule, "source": source, "split": split, "rows_before": len(rows),
-                                "removed": len(removed), "shared_q": stats["q"], "shared_p": stats["p"]})
-        return kept, removed
+    train = rb["ragbench_pubmedqa"]["train"] + rb["ragbench_covidqa"]["train"] + mh_train
+    val_all = rb["ragbench_pubmedqa"]["val"] + rb["ragbench_covidqa"]["val"] + mh_val
+    test_full = rb["ragbench_pubmedqa"]["test"] + rb["ragbench_covidqa"]["test"] + mh_test
 
-    # cross-dataset (question OR passage)
-    rb["ragbench_pubmedqa"]["train"], _ = apply("D4 pqa_labeled x RAGBench train", rb["ragbench_pubmedqa"]["train"],
-                                                mh_test, "ragbench_pubmedqa", "train")
-    mh_train, _ = apply("D4 pqa_artificial x RAGBench PubMedQA val", mh_train, rb["ragbench_pubmedqa"]["val"], MEDHALLU, "train")
-    mh_val, _ = apply("D4 pqa_artificial x RAGBench PubMedQA val", mh_val, rb["ragbench_pubmedqa"]["val"], MEDHALLU, "val")
+    # val / test x training data (question OR 8+ word passage); whole groups, training never reduced
+    clin_keys = key_union(train, training_keys)
+    gen_keys = key_union(general_train, training_keys)
+    training = train + general_train
+    val, removed_val = drop_overlap(val_all, training, keys=training_keys)
+    test, removed_test = drop_overlap(test_full, training, keys=training_keys)
+    for split, before, removed in (("val", val_all, removed_val), ("test", test_full, removed_test)):
+        for r in removed:
+            r[REMOVED_BY] = removal_reasons(r, clin_keys, gen_keys)
+        for source in sorted({r["source"] for r in before}):
+            b = [r for r in before if r["source"] == source]
+            rm = [r for r in removed if r["source"] == source]
+            report["removals"].append({
+                "split": split, "source": source, "rows_before": len(b), "positives_before": sum(r["label"] for r in b),
+                "removed": len(rm), "positives_removed": sum(r["label"] for r in rm),
+                **{reason: sum(reason in r[REMOVED_BY] for r in rm) for reason in REMOVED_BY_VALUES},
+            })
 
-    # D5 pqa_artificial x pqa_labeled (question OR passage)
-    test_pkeys = key_union(mh_test, p_keys)
-    removed_d5 = []
-    mh_train, rm = apply("D5 pqa_artificial x pqa_labeled", mh_train, mh_test, MEDHALLU, "train")
-    removed_d5 += rm
-    mh_val, rm = apply("D5 pqa_artificial x pqa_labeled", mh_val, mh_test, MEDHALLU, "val")
-    removed_d5 += rm
+    # passages behind MedHallu test removals (the old D5/D4a check: are they boilerplate?)
     seen = set()
-    for r in removed_d5:
+    for r in removed_test:
+        if r["source"] != MEDHALLU:
+            continue
         for p in split_passages(r["context"]):
             k = passage_key(p)
-            if k is None:  # too short to be an overlap key, so it cannot have caused the drop
-                continue
-            if k in test_pkeys and k not in seen:
+            if k is not None and k in (clin_keys | gen_keys) and k not in seen:
                 seen.add(k)
-                report["d5_passages"].append(p)
+                report["medhallu_shared_passages"].append(p)
 
-    # within-RAGBench (question only)
-    for source in RAGBENCH_SOURCES.values():
-        for split in ("train", "val"):
-            rb[source][split], _ = apply("D2 question in RAGBench test", rb[source][split], rb[source]["test"],
-                                         source, split, keys=q_keys)
-        rb[source]["train"], _ = apply("D9 question in RAGBench val", rb[source]["train"], rb[source]["val"],
-                                       source, "train", keys=q_keys)
-
-    splits = {
-        "train": rb["ragbench_pubmedqa"]["train"] + rb["ragbench_covidqa"]["train"] + mh_train,
-        "val": rb["ragbench_pubmedqa"]["val"] + rb["ragbench_covidqa"]["val"] + mh_val,
-        "test": rb["ragbench_pubmedqa"]["test"] + rb["ragbench_covidqa"]["test"] + mh_test,
-    }
+    splits = {"train": train, "val": val, "test": test, "test_full": test_full}
     for rows in splits.values():
         assert_schema(rows)
     assert_no_group_leakage(splits["train"], splits["val"], splits["test"])
+    if len(test) + len(removed_test) != len(test_full) or len(val) + len(removed_val) != len(val_all):
+        raise AssertionError("kept + removed must equal the rows before removal")
 
-    # where the duplicated pqa_artificial question ended up after dedup
     for d in report["pqa_artificial_duplicates"]:
         gid = question_group_id(d["question"])
         d["splits_final"] = sorted({s for s, rows in splits.items() for r in rows if r["group_id"] == gid})
 
-    # shares_passage_with_train: final clinical train + general train (validation excluded)
-    clin, gen = key_union(splits["train"], p_keys), key_union(general_train, p_keys)
-    flag = defaultdict(lambda: {"rows": 0, "flagged": 0, "clinical_train": 0, "general_train": 0})
-    for r in splits["test"]:
+    # shares_passage_with_train on the full test (the same row objects appear in the clean test)
+    clin_p = {k for k in clin_keys if k.startswith("p:")}
+    gen_p = {k for k in gen_keys if k.startswith("p:")}
+    flag = defaultdict(lambda: {"rows": 0, "flagged": 0, "clinical_train": 0, "general_train": 0, "in_clean_test": 0})
+    for r in test_full:
         pk = p_keys(r)
-        in_clin, in_gen = bool(pk & clin), bool(pk & gen)
+        in_clin, in_gen = bool(pk & clin_p), bool(pk & gen_p)
         r[TEST_FLAG] = in_clin or in_gen
         f = flag[r["source"]]
         f["rows"] += 1
         f["flagged"] += r[TEST_FLAG]
         f["clinical_train"] += in_clin
         f["general_train"] += in_gen
+    for r in test:
+        flag[r["source"]]["in_clean_test"] += 1
+        if r[TEST_FLAG]:
+            raise AssertionError(f"clean test row flagged {TEST_FLAG}: {r['group_id']}")
     report["flag"] = dict(flag)
-    return splits, report
+    return splits, {"val": removed_val, "test": removed_test}, report
+
+
+def removal_reasons(row: dict, clin_keys: set[str], gen_keys: set[str]) -> list[str]:
+    """removed_by for one removed row: which key kinds of this row matched which training part, or ["group"]."""
+    keys = training_keys(row)
+    out = [f"{kind}:{part}"
+           for part, ref in (("clinical_train", clin_keys), ("general_train", gen_keys))
+           for kind, prefix in (("question", "q:"), ("passage", "p:"))
+           if any(k.startswith(prefix) and k in ref for k in keys)]
+    return sorted(out, key=REMOVED_BY_VALUES.index) or ["group"]
 
 # overlap_audit: check the final splits for any overlap that should have been removed, and report some that is allowed.
-def overlap_audit(splits: dict, general_test: list[dict] | None = None, verbose: bool = False) -> list[dict]:
-    """Recount overlap on the final splits. Asserted (must be 0):
-        cross-dataset train/val x test (question OR passage); MedHallu train/val x MedHallu test (D5);
-        MedHallu train/val x RAGBench PubMedQA val (D4); within-RAGBench train/val x test questions (D2).
-    Reported only: within-RAGBench passage sharing (D2), clinical train x general test (addition 2)."""
-    pools = defaultdict(list)
-    for split, rows in splits.items():
-        for r in rows:
-            pools[(split, r["source"])].append(r)
-    sources = sorted({s for _, s in pools})
+def overlap_audit(splits: dict, general_train: list[dict] | None = None, general_test: list[dict] | None = None,
+                  verbose: bool = False) -> list[dict]:
+    """Recount overlap on the final splits (keys = training_keys: question, or passage of >= 8 words).
+
+    Asserted (must be 0), per source:
+        val x clinical train, val x general train          (any key)
+        test (clean) x clinical train, x general train     (any key)
+        val x test and val x test_full                     (question; CLAUDE.md rule 2, groups)
+    Reported only:
+        test_full x clinical / general train               (any key; = the removed test rows)
+        val x test and val x test_full                     (passage)
+        clinical train x general test                      (question, passage; G+C)
+    general_train=None leaves out the general-train lines (clinical train only).
+    """
+    sources = sorted({r["source"] for rows in splits.values() for r in rows})
     lines, failures = [], []
+    refs = {"train/clinical": key_union(splits["train"], training_keys)}
+    if general_train is not None:
+        refs["train/general"] = key_union(general_train, training_keys)
 
-    def count(a_rows, b_rows, kind):
-        keys = {"q": q_keys, "p": p_keys, "any": overlap_keys}[kind]
-        b = key_union(b_rows, keys)
-        return sum(bool(keys(r) & b) for r in a_rows)
+    def kind_keys(row, kind):
+        keys = training_keys(row)
+        return keys if kind == "any" else {k for k in keys if k.startswith(kind + ":")}
 
-    def check(a, b, kind, asserted):
-        n = count(pools.get(a, []), pools.get(b, []), kind)
-        lines.append({"a": "/".join(a), "b": "/".join(b), "kind": kind, "rows": n, "asserted": asserted})
+    def add(a, b, kind, rows, ref, asserted):
+        n = sum(bool(kind_keys(r, kind) & ref) for r in rows)
+        lines.append({"a": a, "b": b, "kind": kind, "rows": n, "asserted": asserted})
         if asserted and n:
-            failures.append(f"{'/'.join(a)} x {'/'.join(b)} ({kind}): {n} rows")
+            failures.append(f"{a} x {b} ({kind}): {n} rows")
 
-    for a_split in ("train", "val"):
-        for a_src in sources:
-            for b_src in sources:
-                a, b = (a_split, a_src), ("test", b_src)
-                if a_src != b_src or a_src == MEDHALLU:
-                    check(a, b, "any", True)
-                else:
-                    check(a, b, "q", True)
-                    check(a, b, "p", False)
-        check((a_split, MEDHALLU), ("val", "ragbench_pubmedqa"), "any", True)
+    for split, asserted in (("val", True), ("test", True), ("test_full", False)):
+        for src in sources:
+            rows = [r for r in splits.get(split, []) if r["source"] == src]
+            for b, ref in refs.items():
+                add(f"{split}/{src}", b, "any", rows, ref, asserted)
+    for tsplit in ("test", "test_full"):
+        if tsplit not in splits:
+            continue
+        tkeys = key_union(splits[tsplit], training_keys)
+        for src in sources:
+            vrows = [r for r in splits["val"] if r["source"] == src]
+            add(f"val/{src}", tsplit, "q", vrows, tkeys, True)
+            add(f"val/{src}", tsplit, "p", vrows, tkeys, False)
     if general_test is not None:
+        gkeys = key_union(general_test, training_keys)
         for kind in ("q", "p"):
-            n = count(splits["train"], general_test, kind)
-            lines.append({"a": "train/clinical", "b": "general test", "kind": kind, "rows": n, "asserted": False})
+            add("train/clinical", "general test", kind, splits["train"], gkeys, False)
     if verbose:
         print("\n## Overlap audit (rows of A touching B)")
         print("| A | B | key | rows | asserted 0 |\n|---|---|---|---|---|")
@@ -563,7 +605,7 @@ def overlap_audit(splits: dict, general_test: list[dict] | None = None, verbose:
 
 
 def shared_passage_relevance(raw: dict, splits: dict) -> dict:
-    """D2(a): passages a RAGBench test row shares with the final train of the same subset:
+    """D2(a): passages a RAGBench (full) test row shares with the train of the same subset:
     relevant (any of its sentence keys in the row's all_relevant_sentence_keys) or distractor."""
     out = {}
     for source in RAGBENCH_SOURCES.values():
@@ -620,7 +662,12 @@ def sample_handcheck(test_rows: list[dict], source: str, n_per_class: int = 25, 
 
 
 def public(r: dict, split: str) -> dict:
-    cols = COLUMNS + ((TEST_FLAG,) if split == "test" else ())
+    """The columns written for `split` (train, val, test, test_full, removed_val, removed_test)."""
+    cols = COLUMNS
+    if split in ("test", "test_full", "removed_test"):
+        cols += (TEST_FLAG,)
+    if split.startswith("removed_"):
+        cols += (REMOVED_BY,)
     return {k: r[k] for k in cols}
 
 
@@ -637,9 +684,9 @@ def write_split(rows: list[dict], out_dir: str, split: str) -> str:
 
 
 def print_report(splits: dict, report: dict, relevance: dict) -> None:
-    print("\n## Rows and prevalence")
+    print("\n## Rows and prevalence (test = clean test; test_full = official test sets)")
     print("| split | source | rows | positives | prevalence |\n|---|---|---|---|---|")
-    for split in SPLITS:
+    for split in OUT_SPLITS:
         c = Counter((r["source"], r["label"]) for r in splits[split])
         for src in sorted({s for s, _ in c}):
             n, pos = c[(src, 0)] + c[(src, 1)], c[(src, 1)]
@@ -648,21 +695,26 @@ def print_report(splits: dict, report: dict, relevance: dict) -> None:
     for k, n in report["unlabelled"].items():
         if n:
             print(f"- {k}: {n}" + (" (PubMedQA validation = 2,449 rows; official 2,450)" if k == "ragbench_pubmedqa/val" else ""))
-    print("\n## Dedup rules (shared keys measured before the drop)")
-    print("| rule | source | split | rows before | removed | shared questions | shared passages |\n|---|---|---|---|---|---|---|")
-    for x in report["rules"]:
-        print(f"| {x['rule']} | {x['source']} | {x['split']} | {x['rows_before']} | {x['removed']} | {x['shared_q']} | {x['shared_p']} |")
-    print("\n## D5: passages pqa_artificial shared with pqa_labeled (first 150 chars)")
-    for i, p in enumerate(report["d5_passages"], 1):
+    print("\n## Removed from val / test for overlap with the training data (training never reduced)")
+    print("A row can have several reasons; 'group' = removed only because another row of its group matched.")
+    print("| split | source | rows before | positives before | removed | positives removed | "
+          + " | ".join(REMOVED_BY_VALUES) + " |\n|" + "---|" * (6 + len(REMOVED_BY_VALUES)))
+    for x in report["removals"]:
+        print(f"| {x['split']} | {x['source']} | {x['rows_before']} | {x['positives_before']} | {x['removed']} | "
+              f"{x['positives_removed']} | " + " | ".join(str(x[v]) for v in REMOVED_BY_VALUES) + " |")
+    print("\n## Passages behind MedHallu test removals (first 150 chars)")
+    for i, p in enumerate(report["medhallu_shared_passages"], 1):
         print(f"{i:2d}. {p[:150]!r}")
+    if not report["medhallu_shared_passages"]:
+        print("(none)")
     print("\n## pqa_artificial duplicate questions")
     for d in report["pqa_artificial_duplicates"]:
         print(f"- {d['question']!r}: {d['records']} records; after split {d['splits_after_split']}; final {d['splits_final'] or 'removed'}")
-    print(f"\n## {TEST_FLAG} (test rows)")
-    print("| source | test rows | flagged | in clinical train | in general train |\n|---|---|---|---|---|")
+    print(f"\n## {TEST_FLAG} (full test)")
+    print("| source | full test rows | flagged | in clinical train | in general train | rows in clean test |\n|---|---|---|---|---|---|")
     for src, f in sorted(report["flag"].items()):
-        print(f"| {src} | {f['rows']} | {f['flagged']} | {f['clinical_train']} | {f['general_train']} |")
-    print("\n## D2(a): RAGBench test passages shared with the same subset's final train")
+        print(f"| {src} | {f['rows']} | {f['flagged']} | {f['clinical_train']} | {f['general_train']} | {f['in_clean_test']} |")
+    print("\n## D2(a): RAGBench full-test passages shared with the same subset's train")
     keys = ["test_occurrences", "test_occ_relevant", "distinct_passages", "relevant_in_a_test_row",
             "relevant_in_a_train_row", "relevant_in_both", "distractor_everywhere"]
     print("| source | " + " | ".join(keys) + " |")
@@ -685,15 +737,16 @@ def main() -> None:
     raw = load_raw()
     general_train, general_test = read_jsonl(args.general_train), read_jsonl(args.general_test)
 
-    splits, report = build(raw, general_train, seed=args.seed, val_frac=args.val_frac)
-    audit = overlap_audit(splits, general_test, verbose=True)
+    splits, removed, report = build(raw, general_train, seed=args.seed, val_frac=args.val_frac)
+    audit = overlap_audit(splits, general_train, general_test, verbose=True)
     relevance = shared_passage_relevance(raw, splits)
     print_report(splits, report, relevance)
 
-    written = [write_split(splits[s], args.out_dir, s) for s in SPLITS]
+    written = [write_split(splits[s], args.out_dir, s) for s in OUT_SPLITS]
+    written += [write_split(removed[s], args.out_dir, f"removed_{s}") for s in ("val", "test")]
     hc_dir = os.path.join(args.out_dir, "handcheck")
-    for source in RAGBENCH_SOURCES.values():
-        label_rows, key_rows = sample_handcheck(splits["test"], source, args.handcheck_n, args.seed)
+    for source in RAGBENCH_SOURCES.values():  # sampled from the FULL test set
+        label_rows, key_rows = sample_handcheck(splits["test_full"], source, args.handcheck_n, args.seed)
         short = source.replace("ragbench_", "")
         for name, rows in ((f"{short}_label_me.jsonl", label_rows), (f"{short}_key.jsonl", key_rows)):
             write_jsonl(rows, os.path.join(hc_dir, name))

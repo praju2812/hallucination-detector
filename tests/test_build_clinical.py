@@ -5,12 +5,14 @@ Decisions (Prajakta, 9 Nov; see the plan):
   D4  cross-dataset overlap = normalised question OR any shared passage (sha1 of normalised passage text).
       A passage gets a key only if its normalised text has >= min_words words (default 8; 0 keeps every
       non-empty passage), so boilerplate such as "None." is not overlap. build() and the audit use the default.
-  D2/D9 within RAGBench: drop train/val rows whose question is in test; drop train rows whose question is in val.
-  D5  pqa_artificial rows sharing a question or passage with pqa_labeled are dropped from pqa_artificial.
+  Removal rule (supervisor, 10-11 Nov; CLAUDE.md rule 6, replaces D2/D4/D5/D9 training-side drops):
+      training data (clinical train + general train) is never reduced; val and test GROUPS with a row sharing a
+      question or an 8+ word passage with it are removed and returned separately (removed_by says why);
+      the full test set is kept as test_full; val x test passage sharing is reported only, question sharing must be 0.
   D6  contexts are joined in RAGTruth QA style: "passage 1:{p1}\\n\\npassage 2:{p2}".
   D7  unlabelled rows dropped only where expected (RAGBench PubMedQA validation: 1); a test row never.
-  D8  hand-check: 25 + 25 per RAGBench subset from test; labelling file has no label.
-  Flag shares_passage_with_train on test rows: passage in final clinical train or general train (not val).
+  D8  hand-check: 25 + 25 per RAGBench subset from the FULL test; labelling file has no label.
+  Flag shares_passage_with_train on full-test rows: passage in clinical train or general train (not val).
 
 Toy records only: no network, no `datasets` import.
 Run: python -m pytest tests/test_build_clinical.py
@@ -24,6 +26,8 @@ import sys
 import pytest
 
 from scripts.build_clinical import (
+    REMOVED_BY,
+    REMOVED_BY_VALUES,
     TEST_FLAG,
     build,
     drop_overlap,
@@ -33,12 +37,14 @@ from scripts.build_clinical import (
     overlap_audit,
     overlap_keys,
     passage_key,
+    public,
     question_group_id,
     ragbench_label,
     ragbench_rows,
     sample_handcheck,
     split_passages,
     split_pqa_artificial,
+    training_keys,
 )
 
 
@@ -489,25 +495,33 @@ def test_handcheck_too_few_raises():
 
 
 # ---------------------------------------------------------------- build() end to end on toy data
-SHARED_RB, MH_TEST_K, VAL_ONLY, RB_VAL_P, GENERAL_P = (
-    long_p(t) for t in ("SHARED-RB", "MH-TEST-K", "VAL-ONLY", "RB-VAL-P", "GENERAL-P"))
+# Rule (supervisor, 10-11 Nov; CLAUDE.md rule 6): training is never reduced. Val and test rows sharing a question or
+# an 8+ word passage with the training data (clinical train + general train) are removed, whole groups at a time.
+SHARED_RB, SHARED_G, MH_TEST_K, MH_D5_K, MH_VT_K, VAL_ONLY, RB_VAL_P, GENERAL_P, GENERAL_V = (
+    long_p(t) for t in ("SHARED-RB", "SHARED-G", "MH-TEST-K", "MH-D5-K", "MH-VT-K", "VAL-ONLY", "RB-VAL-P",
+                        "GENERAL-P", "GENERAL-V"))
+FIXTURE_SEED, FIXTURE_VAL_FRAC = 42, 0.2
 
 
 def toy_raw():
-    """Planted cases:
-    pubmedqa train  'Leak to test?'        same question as a pubmedqa test row   -> D2 drop
-    pubmedqa train  'Leak to val?'         same question as a pubmedqa val row    -> D9 drop (from train)
-    pubmedqa train  'Shares a passage?'    passage 'SHARED-RB' also in pubmedqa test -> kept, test row flagged
-    pubmedqa train  'Touches MedHallu?'    passage 'MH-TEST-K' from pqa_labeled  -> D4 drop
-    pubmedqa val    one unlabelled row                                            -> D7 drop (expected 1)
-    pubmedqa val    passage 'VAL-ONLY' also in a pubmedqa test row                -> no flag (val excluded)
-    covidqa test    passage 'GENERAL-P' also in general train                     -> flagged (general)
-    pqa_artificial  'Art touches test?'    passage 'MH-TEST-K'                    -> D5 drop
-    pqa_artificial  'Art touches val?'     passage 'RB-VAL-P' from pubmedqa val   -> D4 drop
-    pqa_artificial  'Art boilerplate?'     only shares 'None.' with pqa_labeled   -> kept (passage < 8 words)
-    pubmedqa train  'Clean train?'         only shares 'None.' with pqa_labeled   -> kept (passage < 8 words)
-    pubmedqa test   'Boilerplate test?'    only shares 'None.' with clinical train ('Covid train?') -> not flagged
-    Shared passages are 8+ words (long_p) so they count at the default min_words; 'None.' is not.
+    """Planted cases (-> what happens under the rule):
+    pubmedqa train  every row                                          -> kept (training is never reduced)
+    pubmedqa val    'Leak to val?'       question also in pubmedqa train        -> removed (question:clinical_train)
+    pubmedqa val    'Val general?'       passage GENERAL-V in general train      -> removed (passage:general_train)
+    pubmedqa val    'Val touches art?'   passage RB-VAL-P in pqa_artificial train -> removed (old D4b, now val side)
+    pubmedqa val    'Val passage?'       passage VAL-ONLY only in a test row     -> kept (val x test reported only)
+    pubmedqa val    'No label?'          unlabelled                              -> D7 drop (not a removal)
+    pubmedqa test   'Leak to test?'      question also in pubmedqa train         -> removed (question)
+    pubmedqa test   'Test sharing?'      passage SHARED-RB in pubmedqa train     -> removed (passage), flagged
+    pubmedqa test   'Group test?' x2     one row has SHARED-G (in train), one not -> both removed (one 'group')
+    pubmedqa test   'Val-only passage?'  passage only in val                     -> kept, not flagged
+    pubmedqa test   'Boilerplate test?'  shares only 'None.' with train          -> kept, not flagged
+    covidqa test    'Covid general?'     passage GENERAL-P in general train      -> removed (passage:general_train)
+    medhallu test   'MedHallu test?'     passage MH-TEST-K in pubmedqa train     -> removed (old D4a)
+    medhallu test   'MedHallu D5?'       passage MH-D5-K in pqa_artificial train -> removed (old D5)
+    medhallu test   'MedHallu val-shared?' passage MH-VT-K only in pqa_artificial val -> kept (val is not training)
+    pqa_artificial  'Art boilerplate?'   shares only 'None.' with test           -> stays in train
+    Placement of the pqa_artificial rows at seed 42 / val_frac 0.2 is checked in test_build_toy_placement.
     """
     pub = {
         "train": [
@@ -516,11 +530,14 @@ def toy_raw():
             rb_record("pubmedqa_3", "Shares a passage?", [SHARED_RB, "t3"], adherence=False),
             rb_record("pubmedqa_4", "Touches MedHallu?", [MH_TEST_K]),
             rb_record("pubmedqa_5", "Clean train?", ["t5", "None."]),
+            rb_record("pubmedqa_16", "Group source?", [SHARED_G]),
         ],
         "val": [
             rb_record("pubmedqa_6", "Leak to val?", ["v1"]),
             rb_record("pubmedqa_7", "No label?", ["v2"], adherence=None),
-            rb_record("pubmedqa_8", "Val passage?", [VAL_ONLY, RB_VAL_P], adherence=False),
+            rb_record("pubmedqa_8", "Val passage?", [VAL_ONLY], adherence=False),
+            rb_record("pubmedqa_17", "Val general?", [GENERAL_V]),
+            rb_record("pubmedqa_18", "Val touches art?", [RB_VAL_P]),
         ],
         "test": [
             rb_record("pubmedqa_9", "Leak to test?", ["x1"]),
@@ -528,6 +545,8 @@ def toy_raw():
             rb_record("pubmedqa_11", "Test clean?", ["x3"]),
             rb_record("pubmedqa_12", "Val-only passage?", [VAL_ONLY]),
             rb_record("pubmedqa_13", "Boilerplate test?", ["None.", "x4"]),
+            rb_record("pubmedqa_14", "Group test?", [SHARED_G], adherence=False),
+            rb_record("pubmedqa_15", "Group test?", ["x5"]),
         ],
     }
     cov = {
@@ -535,10 +554,16 @@ def toy_raw():
         "val": [rb_record("2", "Covid val?", ["c2"], adherence=False)],
         "test": [rb_record("3", "Covid general?", [GENERAL_P], adherence=False)],
     }
-    labeled = [mh_record("MedHallu test?", [MH_TEST_K, "m2"]), mh_record("MedHallu test 2?", ["m3", "None."])]
+    labeled = [
+        mh_record("MedHallu test?", [MH_TEST_K, "m2"]),
+        mh_record("MedHallu test 2?", ["m3", "None."]),
+        mh_record("MedHallu D5?", [MH_D5_K]),
+        mh_record("MedHallu val-shared?", [MH_VT_K]),
+    ]
     artificial = [
-        mh_record("Art touches test?", [MH_TEST_K]),
+        mh_record("Art touches test?", [MH_D5_K]),
         mh_record("Art touches val?", [RB_VAL_P]),
+        mh_record("Art shares with test?", [MH_VT_K]),
         mh_record("Art boilerplate?", ["None.", "ab"]),
     ] + [mh_record(f"Art clean {i}?", [f"a{i}"]) for i in range(20)]
     return {"ragbench_pubmedqa": pub, "ragbench_covidqa": cov, "pqa_labeled": labeled, "pqa_artificial": artificial}
@@ -547,22 +572,36 @@ def toy_raw():
 GENERAL_TRAIN = [
     {"query": "General q?", "context": f"passage 1:{GENERAL_P}\n\npassage 2:g2", "answer": "a", "label": 0,
      "source": "ragtruth", "task": "qa", "group_id": "rt-1"},
+    {"query": "Val general q?", "context": f"passage 1:{GENERAL_V}", "answer": "a", "label": 0,
+     "source": "ragtruth", "task": "qa", "group_id": "rt-2"},
     {"query": "Halu q?", "context": "Plain knowledge.", "answer": "a", "label": 1,
      "source": "halueval", "task": "qa", "group_id": "halueval-1"},
+    {"query": "Summarize the following news", "context": "A short news story.", "answer": "a", "label": 0,
+     "source": "ragtruth", "task": "summary", "group_id": "rt-3"},
 ]
 
 
 @pytest.fixture(scope="module")
 def built():
-    return build(toy_raw(), GENERAL_TRAIN, seed=42, val_frac=0.2)
+    """(splits, removed, report) from build() on the toy data."""
+    return build(toy_raw(), GENERAL_TRAIN, seed=FIXTURE_SEED, val_frac=FIXTURE_VAL_FRAC)
 
 
 def _queries(rows, source=None):
     return {r["query"] for r in rows if source is None or r["source"] == source}
 
 
-def test_build_schema(built):
-    splits, _ = built
+def test_build_toy_placement():
+    """Precondition for the planted MedHallu cases: where split_pqa_artificial puts them."""
+    train, val = split_pqa_artificial(medhallu_rows(toy_raw()["pqa_artificial"]), FIXTURE_SEED, FIXTURE_VAL_FRAC)
+    assert {"Art touches test?", "Art touches val?", "Art boilerplate?"} <= _queries(train)
+    assert "Art shares with test?" in _queries(val)
+
+
+def test_build_returns_all_splits(built):
+    splits, removed, report = built
+    assert set(splits) == {"train", "val", "test", "test_full"}
+    assert set(removed) == {"val", "test"}
     cols = {"query", "context", "answer", "label", "source", "task", "group_id", "difficulty", "category"}
     for name, rows in splits.items():
         assert rows, name
@@ -570,65 +609,148 @@ def test_build_schema(built):
             assert cols <= set(r), (name, cols - set(r))
             assert r["label"] in (0, 1)
             assert r["source"] in ("ragbench_pubmedqa", "ragbench_covidqa", "medhallu")
-    assert all(TEST_FLAG in r for r in splits["test"])
+    assert all(TEST_FLAG in r for r in splits["test_full"])
+    assert all(REMOVED_BY in r for rows in removed.values() for r in rows)
+
+
+def test_build_train_never_reduced(built):
+    splits, _, _ = built
+    raw = toy_raw()
+    assert len(_rows(splits["train"], "ragbench_pubmedqa")) == len(raw["ragbench_pubmedqa"]["train"])
+    assert len(_rows(splits["train"], "ragbench_covidqa")) == len(raw["ragbench_covidqa"]["train"])
+    art_train, _ = split_pqa_artificial(medhallu_rows(raw["pqa_artificial"]), FIXTURE_SEED, FIXTURE_VAL_FRAC)
+    assert _rows(splits["train"], "medhallu") == art_train
+
+
+def _rows(rows, source):
+    return [r for r in rows if r["source"] == source]
+
+
+def test_build_full_test_is_the_official_test(built):
+    splits, removed, _ = built
+    raw = toy_raw()
+    assert len(_rows(splits["test_full"], "ragbench_pubmedqa")) == len(raw["ragbench_pubmedqa"]["test"])
+    assert len(_rows(splits["test_full"], "ragbench_covidqa")) == len(raw["ragbench_covidqa"]["test"])
+    assert len(_rows(splits["test_full"], "medhallu")) == 2 * len(raw["pqa_labeled"])
+    ids = lambda rows: sorted(id(r) for r in rows)
+    assert ids(splits["test"] + removed["test"]) == ids(splits["test_full"])
+    assert not {id(r) for r in splits["test"]} & {id(r) for r in removed["test"]}
+
+
+def test_build_val_removals(built):
+    splits, removed, _ = built
+    assert _queries(removed["val"]) == {"Leak to val?", "Val general?", "Val touches art?"}
+    assert {"Val passage?", "Covid val?", "Art shares with test?"} <= _queries(splits["val"])  # val x test: kept
+    assert "No label?" not in _queries(splits["val"] + removed["val"])  # D7 drop, not an overlap removal
+
+
+def test_build_test_removals(built):
+    splits, removed, _ = built
+    assert _queries(removed["test"]) == {"Leak to test?", "Test sharing?", "Group test?", "Covid general?",
+                                         "MedHallu test?", "MedHallu D5?"}
+    assert _queries(splits["test"]) == {"Test clean?", "Val-only passage?", "Boilerplate test?",
+                                        "MedHallu test 2?", "MedHallu val-shared?"}
+
+
+def test_build_removed_by(built):
+    _, removed, _ = built
+    by = {}
+    for r in removed["val"] + removed["test"]:
+        by.setdefault(r["query"], []).append(r[REMOVED_BY])
+    assert by["Leak to val?"] == [["question:clinical_train"]]
+    assert by["Val general?"] == [["passage:general_train"]]
+    assert by["Val touches art?"] == [["passage:clinical_train"]]
+    assert by["Leak to test?"] == [["question:clinical_train"]]
+    assert by["Covid general?"] == [["passage:general_train"]]
+    assert by["MedHallu test?"] == [["passage:clinical_train"]] * 2
+    assert sorted(by["Group test?"]) == [["group"], ["passage:clinical_train"]]
+    assert all(set(v) <= set(REMOVED_BY_VALUES) for vs in by.values() for v in vs)
+
+
+def test_build_flag_on_full_test(built):
+    splits, _, _ = built
+    flag = {r["query"]: r[TEST_FLAG] for r in splits["test_full"]}
+    assert flag["Test sharing?"] is True       # passage in clinical train
+    assert flag["Covid general?"] is True      # passage in general train
+    assert flag["Val-only passage?"] is False  # passage only in val: not training
+    assert flag["Test clean?"] is False
+    assert flag["Boilerplate test?"] is False  # shares only 'None.' with train
+    assert flag["Leak to test?"] is False      # question overlap only: the flag is about passages
+    assert all(isinstance(v, bool) for v in flag.values())
+    assert not any(r[TEST_FLAG] for r in splits["test"])
 
 
 def test_build_no_group_across_splits(built):
-    splits, _ = built
+    splits, _, _ = built
     g = {n: {r["group_id"] for r in rows} for n, rows in splits.items()}
     assert not (g["train"] & g["val"]) and not (g["train"] & g["test"]) and not (g["val"] & g["test"])
-
-
-def test_build_test_rows_never_removed(built):
-    splits, _ = built
-    raw = toy_raw()
-    assert len([r for r in splits["test"] if r["source"] == "ragbench_pubmedqa"]) == 5
-    assert len([r for r in splits["test"] if r["source"] == "ragbench_covidqa"]) == 1
-    assert len([r for r in splits["test"] if r["source"] == "medhallu"]) == 2 * len(raw["pqa_labeled"])
-
-
-def test_build_planted_drops(built):
-    splits, _ = built
-    tr = _queries(splits["train"], "ragbench_pubmedqa")
-    assert "Leak to test?" not in tr          # D2
-    assert "Leak to val?" not in tr           # D9 (dropped from train)
-    assert "Leak to val?" in _queries(splits["val"], "ragbench_pubmedqa")
-    assert "Touches MedHallu?" not in tr      # D4
-    assert {"Shares a passage?", "Clean train?"} <= tr   # passage sharing within RAGBench is kept; 'None.' is not D4
-    assert "No label?" not in _queries(splits["val"])    # D7
-    mh = _queries(splits["train"] + splits["val"], "medhallu")
-    assert "Art touches test?" not in mh      # D5
-    assert "Art touches val?" not in mh       # D4
-    assert "Art boilerplate?" in mh           # D5 ignores the short shared passage 'None.'
-    assert len(mh) == 21
-
-
-def test_build_flag(built):
-    splits, _ = built
-    flag = {r["query"]: r[TEST_FLAG] for r in splits["test"]}
-    assert flag["Test sharing?"] is True       # passage in clinical train
-    assert flag["Covid general?"] is True      # passage in general train
-    assert flag["Val-only passage?"] is False  # passage only in val: not counted
-    assert flag["Test clean?"] is False
-    assert flag["Boilerplate test?"] is False  # shares only 'None.' with train
-    assert all(isinstance(v, bool) for v in flag.values())
+    assert g["train"] & g["test_full"], "the full test keeps rows whose question is in train (by design)"
 
 
 def test_build_report_counts(built):
-    _, report = built
-    assert isinstance(report, dict) and report, "build returns a report of what was removed"
+    _, removed, report = built
+    for split in ("val", "test"):
+        lines = [x for x in report["removals"] if x["split"] == split]
+        assert sum(x["removed"] for x in lines) == len(removed[split])
+        assert sum(x["positives_removed"] for x in lines) == sum(r["label"] for r in removed[split])
+    assert set(report["medhallu_shared_passages"]) == {MH_TEST_K, MH_D5_K}
+
+
+def test_training_keys_skip_constant_summary_query():
+    summary = GENERAL_TRAIN[3]
+    assert not any(k.startswith("q:") for k in training_keys(summary))
+    qa = row("Does X help?", [long_p("Doc")])
+    assert training_keys(qa) == overlap_keys(qa)
+
+
+def test_public_columns_per_file():
+    r = dict(row("Q?", ["p"]), **{TEST_FLAG: False, REMOVED_BY: ["group"]})
+    assert TEST_FLAG not in public(r, "train") and REMOVED_BY not in public(r, "val")
+    assert TEST_FLAG in public(r, "test") and TEST_FLAG in public(r, "test_full")
+    assert REMOVED_BY in public(r, "removed_val") and {TEST_FLAG, REMOVED_BY} <= set(public(r, "removed_test"))
 
 
 def test_build_audit_passes(built):
-    splits, _ = built
-    overlap_audit(splits)  # raises AssertionError on any asserted overlap
+    splits, _, _ = built
+    lines = overlap_audit(splits, GENERAL_TRAIN)  # raises AssertionError on any asserted overlap
+    full = [x for x in lines if x["a"].startswith("test_full/") and x["rows"]]
+    assert full and not any(x["asserted"] for x in full), "test_full overlap is reported, never asserted"
+    vt = [x for x in lines if x["a"].startswith("val/") and x["kind"] == "p" and x["rows"]]
+    assert vt and not any(x["asserted"] for x in vt), "val x test passage sharing is reported only"
 
 
-def test_audit_catches_cross_dataset_leak(built):
-    splits, _ = built
+def _leak_into(splits, split, row_):
     bad = {k: list(v) for k, v in splits.items()}
-    leak = next(r for r in splits["test"] if r["source"] == "medhallu")
-    bad["train"].append(dict(leak, source="ragbench_pubmedqa", query="Fresh question?",
-                             group_id=question_group_id("Fresh question?")))
+    bad[split].append(row_)
+    return bad
+
+
+def test_audit_catches_train_x_clean_test(built):
+    splits, _, _ = built
+    leak = next(r for r in splits["test"] if r["query"] == "MedHallu val-shared?")
+    bad = _leak_into(splits, "train", dict(leak, source="ragbench_pubmedqa", query="Fresh question?",
+                                            group_id=question_group_id("Fresh question?")))
     with pytest.raises(AssertionError):
-        overlap_audit(bad)
+        overlap_audit(bad, GENERAL_TRAIN)
+
+
+def test_audit_catches_val_x_train(built):
+    splits, _, _ = built
+    bad = _leak_into(splits, "val", row("Clean train?", ["fresh"]))
+    with pytest.raises(AssertionError):
+        overlap_audit(bad, GENERAL_TRAIN)
+
+
+def test_audit_catches_val_x_general_train(built):
+    splits, _, _ = built
+    bad = _leak_into(splits, "val", row("Fresh val?", [GENERAL_P]))
+    overlap_audit(bad)  # without general_train the general part is not checked
+    with pytest.raises(AssertionError):
+        overlap_audit(bad, GENERAL_TRAIN)
+
+
+def test_audit_catches_val_x_test_question(built):
+    splits, _, _ = built
+    bad = _leak_into(splits, "val", row("Test clean?", ["fresh"]))
+    with pytest.raises(AssertionError):
+        overlap_audit(bad, GENERAL_TRAIN)
