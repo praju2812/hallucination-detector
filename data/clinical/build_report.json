@@ -1,0 +1,396 @@
+{
+ "git_sha": "503bccd2b0436c8e65b1226853a9dfb162713a5f",
+ "seed": 42,
+ "val_frac": 0.1,
+ "revisions": {
+  "rungalileo/ragbench": "97808f3e5fd16ede40bbff6c2949af8139b2eb7b",
+  "UTAustin-AIHealth/MedHallu": "515060458a945c633debc6fd5baac7764416b724"
+ },
+ "general_train": "data/unified_v2/train.jsonl",
+ "general_test": "data/unified_v2/test.jsonl",
+ "files": [
+  "train.jsonl.gz",
+  "val.jsonl",
+  "test.jsonl",
+  "test_full.jsonl",
+  "removed_val.jsonl",
+  "removed_test.jsonl",
+  "handcheck/pubmedqa_label_me.jsonl",
+  "handcheck/pubmedqa_key.jsonl",
+  "handcheck/covidqa_label_me.jsonl",
+  "handcheck/covidqa_key.jsonl"
+ ],
+ "unlabelled": {
+  "ragbench_pubmedqa/train": 0,
+  "ragbench_pubmedqa/val": 1,
+  "ragbench_pubmedqa/test": 0,
+  "ragbench_covidqa/train": 0,
+  "ragbench_covidqa/val": 0,
+  "ragbench_covidqa/test": 0
+ },
+ "removals": [
+  {
+   "split": "val",
+   "source": "medhallu",
+   "rows_before": 1738,
+   "positives_before": 869,
+   "removed": 0,
+   "positives_removed": 0,
+   "question:clinical_train": 0,
+   "passage:clinical_train": 0,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  },
+  {
+   "split": "val",
+   "source": "ragbench_covidqa",
+   "rows_before": 267,
+   "positives_before": 36,
+   "removed": 179,
+   "positives_removed": 19,
+   "question:clinical_train": 8,
+   "passage:clinical_train": 179,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  },
+  {
+   "split": "val",
+   "source": "ragbench_pubmedqa",
+   "rows_before": 2449,
+   "positives_before": 735,
+   "removed": 1923,
+   "positives_removed": 590,
+   "question:clinical_train": 2,
+   "passage:clinical_train": 1923,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  },
+  {
+   "split": "test",
+   "source": "medhallu",
+   "rows_before": 2000,
+   "positives_before": 1000,
+   "removed": 2,
+   "positives_removed": 1,
+   "question:clinical_train": 2,
+   "passage:clinical_train": 2,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  },
+  {
+   "split": "test",
+   "source": "ragbench_covidqa",
+   "rows_before": 246,
+   "positives_before": 39,
+   "removed": 141,
+   "positives_removed": 19,
+   "question:clinical_train": 11,
+   "passage:clinical_train": 141,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  },
+  {
+   "split": "test",
+   "source": "ragbench_pubmedqa",
+   "rows_before": 2450,
+   "positives_before": 725,
+   "removed": 1928,
+   "positives_removed": 577,
+   "question:clinical_train": 4,
+   "passage:clinical_train": 1928,
+   "question:general_train": 0,
+   "passage:general_train": 0,
+   "group": 0
+  }
+ ],
+ "flag": {
+  "ragbench_pubmedqa": {
+   "rows": 2450,
+   "flagged": 1928,
+   "clinical_train": 1928,
+   "general_train": 0,
+   "in_clean_test": 522
+  },
+  "ragbench_covidqa": {
+   "rows": 246,
+   "flagged": 141,
+   "clinical_train": 141,
+   "general_train": 0,
+   "in_clean_test": 105
+  },
+  "medhallu": {
+   "rows": 2000,
+   "flagged": 2,
+   "clinical_train": 2,
+   "general_train": 0,
+   "in_clean_test": 1998
+  }
+ },
+ "medhallu_shared_passages": [
+  "To illustrate how maternal mortality audit identifies different causes of and contributing factors to maternal deaths in different settings in low- and high-income countries and how this can lead to local solutions in reducing maternal deaths.",
+  "Descriptive study of maternal mortality from different settings and review of data on the history of reducing maternal mortality in what are now high-income countries."
+ ],
+ "pqa_artificial_duplicates": [
+  {
+   "question": "Does mOLECULAR CHARACTERISATION AND ANTIMICROBIAL RESISTANCE PATTERNS OF ESCHERICHIA COLI isolate FROM GOATS SLAUGHTERED IN PARTS OF KENYA?",
+   "records": 2,
+   "splits_after_split": [
+    "train"
+   ],
+   "splits_final": [
+    "train"
+   ]
+  }
+ ],
+ "audit": [
+  {
+   "a": "val/medhallu",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/medhallu",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/medhallu",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/medhallu",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/ragbench_covidqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/ragbench_covidqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/ragbench_pubmedqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test/ragbench_pubmedqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "test_full/medhallu",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 2,
+   "asserted": false
+  },
+  {
+   "a": "test_full/medhallu",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "test_full/ragbench_covidqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 141,
+   "asserted": false
+  },
+  {
+   "a": "test_full/ragbench_covidqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "test_full/ragbench_pubmedqa",
+   "b": "train/clinical",
+   "kind": "any",
+   "rows": 1928,
+   "asserted": false
+  },
+  {
+   "a": "test_full/ragbench_pubmedqa",
+   "b": "train/general",
+   "kind": "any",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "val/medhallu",
+   "b": "test",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/medhallu",
+   "b": "test",
+   "kind": "p",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "test",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "test",
+   "kind": "p",
+   "rows": 2,
+   "asserted": false
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "test",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "test",
+   "kind": "p",
+   "rows": 26,
+   "asserted": false
+  },
+  {
+   "a": "val/medhallu",
+   "b": "test_full",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/medhallu",
+   "b": "test_full",
+   "kind": "p",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "test_full",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_covidqa",
+   "b": "test_full",
+   "kind": "p",
+   "rows": 4,
+   "asserted": false
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "test_full",
+   "kind": "q",
+   "rows": 0,
+   "asserted": true
+  },
+  {
+   "a": "val/ragbench_pubmedqa",
+   "b": "test_full",
+   "kind": "p",
+   "rows": 72,
+   "asserted": false
+  },
+  {
+   "a": "train/clinical",
+   "b": "general test",
+   "kind": "q",
+   "rows": 0,
+   "asserted": false
+  },
+  {
+   "a": "train/clinical",
+   "b": "general test",
+   "kind": "p",
+   "rows": 0,
+   "asserted": false
+  }
+ ],
+ "d2_relevance": {
+  "ragbench_pubmedqa": {
+   "test_occurrences": 4040,
+   "test_occ_relevant": 1369,
+   "distinct_passages": 1902,
+   "relevant_in_a_test_row": 817,
+   "relevant_in_a_train_row": 1205,
+   "relevant_in_both": 555,
+   "distractor_everywhere": 435
+  },
+  "ragbench_covidqa": {
+   "test_occurrences": 316,
+   "test_occ_relevant": 213,
+   "distinct_passages": 273,
+   "relevant_in_a_test_row": 189,
+   "relevant_in_a_train_row": 203,
+   "relevant_in_both": 153,
+   "distractor_everywhere": 34
+  }
+ }
+}
