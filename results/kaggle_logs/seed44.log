@@ -1,0 +1,147 @@
+device: cuda (Tesla T4)
+run_dir: /kaggle/working/runs/run_seed44_20261110_151337
+
+Loading weights:   0%|          | 0/134 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 134/134 [00:00<00:00, 2761.47it/s]
+[transformers] [1mModernBertModel LOAD REPORT[0m from: answerdotai/ModernBERT-base
+Key               | Status     |  | 
+------------------+------------+--+-
+head.norm.weight  | UNEXPECTED |  | 
+decoder.bias      | UNEXPECTED |  | 
+head.dense.weight | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+  autocast=True logits dtype=torch.float16 device=cuda
+  step 0/3126 loss=0.7979 elapsed=1s
+  step 50/3126 loss=1.1678 elapsed=31s
+  step 100/3126 loss=1.2979 elapsed=61s
+  step 150/3126 loss=0.9119 elapsed=93s
+  step 200/3126 loss=0.6739 elapsed=127s
+  step 250/3126 loss=1.0727 elapsed=160s
+  step 300/3126 loss=1.0998 elapsed=195s
+  step 350/3126 loss=0.4686 elapsed=227s
+  step 400/3126 loss=0.2428 elapsed=259s
+  step 450/3126 loss=0.3176 elapsed=291s
+  step 500/3126 loss=0.5839 elapsed=322s
+  step 550/3126 loss=1.2698 elapsed=354s
+  step 600/3126 loss=0.9043 elapsed=387s
+  step 650/3126 loss=0.6954 elapsed=418s
+  step 700/3126 loss=0.6024 elapsed=449s
+  step 750/3126 loss=0.3152 elapsed=482s
+  step 800/3126 loss=1.2345 elapsed=514s
+  step 850/3126 loss=0.8132 elapsed=546s
+  step 900/3126 loss=0.0042 elapsed=576s
+  step 950/3126 loss=0.2083 elapsed=609s
+  step 1000/3126 loss=0.7322 elapsed=639s
+  step 1050/3126 loss=0.5040 elapsed=671s
+  step 1100/3126 loss=0.1088 elapsed=702s
+  step 1150/3126 loss=0.1650 elapsed=735s
+  step 1200/3126 loss=0.0066 elapsed=766s
+  step 1250/3126 loss=0.3017 elapsed=796s
+  step 1300/3126 loss=0.3859 elapsed=829s
+  step 1350/3126 loss=0.6589 elapsed=861s
+  step 1400/3126 loss=0.1361 elapsed=892s
+  step 1450/3126 loss=0.8389 elapsed=921s
+  step 1500/3126 loss=0.0060 elapsed=955s
+  step 1550/3126 loss=0.1158 elapsed=987s
+  step 1600/3126 loss=0.6052 elapsed=1019s
+  step 1650/3126 loss=0.2574 elapsed=1051s
+  step 1700/3126 loss=0.1398 elapsed=1081s
+  step 1750/3126 loss=0.3108 elapsed=1114s
+  step 1800/3126 loss=0.4192 elapsed=1147s
+  step 1850/3126 loss=0.4469 elapsed=1182s
+  step 1900/3126 loss=0.8299 elapsed=1216s
+  step 1950/3126 loss=0.8363 elapsed=1247s
+  step 2000/3126 loss=0.7850 elapsed=1281s
+  step 2050/3126 loss=0.2853 elapsed=1311s
+  step 2100/3126 loss=0.1928 elapsed=1343s
+  step 2150/3126 loss=0.8990 elapsed=1375s
+  step 2200/3126 loss=0.4284 elapsed=1410s
+  step 2250/3126 loss=0.3422 elapsed=1443s
+  step 2300/3126 loss=0.2395 elapsed=1477s
+  step 2350/3126 loss=0.4216 elapsed=1509s
+  step 2400/3126 loss=0.1671 elapsed=1541s
+  step 2450/3126 loss=0.3346 elapsed=1574s
+  step 2500/3126 loss=0.0730 elapsed=1605s
+  step 2550/3126 loss=1.6298 elapsed=1638s
+  step 2600/3126 loss=0.1792 elapsed=1669s
+  step 2650/3126 loss=0.1395 elapsed=1702s
+  step 2700/3126 loss=0.0010 elapsed=1733s
+  step 2750/3126 loss=0.7519 elapsed=1766s
+  step 2800/3126 loss=0.2341 elapsed=1801s
+  step 2850/3126 loss=0.5280 elapsed=1832s
+  step 2900/3126 loss=0.0815 elapsed=1864s
+  step 2950/3126 loss=1.6988 elapsed=1895s
+  step 3000/3126 loss=0.1969 elapsed=1927s
+  step 3050/3126 loss=0.0020 elapsed=1958s
+  step 3100/3126 loss=0.7563 elapsed=1989s
+[epoch 0] val pr_auc=0.5223 roc_auc=0.6772
+  saved best (pr_auc=0.5223)
+  autocast=True logits dtype=torch.float16 device=cuda
+  step 0/3126 loss=0.4356 elapsed=0s
+  step 50/3126 loss=0.1418 elapsed=31s
+  step 100/3126 loss=0.1530 elapsed=65s
+  step 150/3126 loss=0.3635 elapsed=96s
+  step 200/3126 loss=0.2080 elapsed=131s
+  step 250/3126 loss=0.0649 elapsed=161s
+  step 300/3126 loss=0.1708 elapsed=192s
+  step 350/3126 loss=0.1736 elapsed=222s
+  step 400/3126 loss=0.3566 elapsed=255s
+  step 450/3126 loss=0.0082 elapsed=288s
+  step 500/3126 loss=0.2534 elapsed=317s
+  step 550/3126 loss=2.7524 elapsed=351s
+  step 600/3126 loss=0.0342 elapsed=384s
+  step 650/3126 loss=0.0073 elapsed=417s
+  step 700/3126 loss=0.1444 elapsed=449s
+  step 750/3126 loss=0.6967 elapsed=479s
+  step 800/3126 loss=0.0195 elapsed=511s
+  step 850/3126 loss=0.8095 elapsed=543s
+  step 900/3126 loss=0.3707 elapsed=573s
+  step 950/3126 loss=0.2246 elapsed=606s
+  step 1000/3126 loss=0.5531 elapsed=639s
+  step 1050/3126 loss=0.9477 elapsed=672s
+  step 1100/3126 loss=0.7017 elapsed=704s
+  step 1150/3126 loss=0.1732 elapsed=737s
+  step 1200/3126 loss=1.2699 elapsed=769s
+  step 1250/3126 loss=0.1841 elapsed=799s
+  step 1300/3126 loss=0.9272 elapsed=830s
+  step 1350/3126 loss=0.0093 elapsed=859s
+  step 1400/3126 loss=0.0975 elapsed=892s
+  step 1450/3126 loss=0.5046 elapsed=922s
+  step 1500/3126 loss=0.3371 elapsed=956s
+  step 1550/3126 loss=0.0810 elapsed=987s
+  step 1600/3126 loss=0.5708 elapsed=1017s
+  step 1650/3126 loss=0.0786 elapsed=1046s
+  step 1700/3126 loss=0.3703 elapsed=1079s
+  step 1750/3126 loss=0.6314 elapsed=1111s
+  step 1800/3126 loss=0.5577 elapsed=1144s
+  step 1850/3126 loss=1.2048 elapsed=1177s
+  step 1900/3126 loss=0.3984 elapsed=1208s
+  step 1950/3126 loss=0.1882 elapsed=1240s
+  step 2000/3126 loss=0.3582 elapsed=1272s
+  step 2050/3126 loss=0.4228 elapsed=1305s
+  step 2100/3126 loss=0.1178 elapsed=1336s
+  step 2150/3126 loss=0.5022 elapsed=1368s
+  step 2200/3126 loss=0.0920 elapsed=1401s
+  step 2250/3126 loss=0.1441 elapsed=1434s
+  step 2300/3126 loss=0.4368 elapsed=1468s
+  step 2350/3126 loss=0.9789 elapsed=1499s
+  step 2400/3126 loss=2.0223 elapsed=1531s
+  step 2450/3126 loss=0.5921 elapsed=1562s
+  step 2500/3126 loss=0.5524 elapsed=1596s
+  step 2550/3126 loss=0.0714 elapsed=1627s
+  step 2600/3126 loss=0.0738 elapsed=1660s
+  step 2650/3126 loss=1.8236 elapsed=1696s
+  step 2700/3126 loss=0.0346 elapsed=1729s
+  step 2750/3126 loss=0.6089 elapsed=1762s
+  step 2800/3126 loss=0.0113 elapsed=1793s
+  step 2850/3126 loss=0.4039 elapsed=1823s
+  step 2900/3126 loss=0.0148 elapsed=1857s
+  step 2950/3126 loss=0.0011 elapsed=1891s
+  step 3000/3126 loss=0.2460 elapsed=1926s
+  step 3050/3126 loss=0.6104 elapsed=1960s
+  step 3100/3126 loss=0.0437 elapsed=1994s
+[epoch 1] val pr_auc=0.5782 roc_auc=0.7246
+  saved best (pr_auc=0.5782)
+TEST: {'pr_auc': 0.9415, 'roc_auc': 0.954, 'precision': 0.6738, 'recall': 0.9252, 'f1': 0.7797, 'threshold': 0.2}
