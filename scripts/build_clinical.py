@@ -766,8 +766,8 @@ def main() -> None:
     for p in written:
         print(f"| {p} | {os.path.getsize(p) / 1e6:.1f} |")
     if any(p.endswith(".gz") for p in written):
-        print("\nNOTE: a split was written as .jsonl.gz (over ~90 MB). scripts/mvp_check.py and "
-              "scripts/report_truncation.py look for {split}.jsonl only: tell Prajakta before changing them.")
+        print("\nNOTE: a split was written as .jsonl.gz (over ~90 MB). utils.io (so src/data.py) and scripts/mvp_check.py "
+              "read it as is; point a config's data path at the .gz file name.")
 
 
 if __name__ == "__main__":
