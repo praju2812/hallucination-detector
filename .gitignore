@@ -231,3 +231,6 @@ best-onlyragtruth/
 best-unified-source/
 # Phase 2 (D4): run checkpoints stay local; run JSON/JSONL files are committed
 runs/**/*.pt
+
+# Phase 4: smoke scoring output, never reported
+results/rq1_smoke/
