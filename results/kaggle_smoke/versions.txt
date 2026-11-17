@@ -1,0 +1,1 @@
+torch, transformers, cuda, cuda_available, python, gpu: 2.11.0+cu130 5.22.2 13.0 True 3.13.16 Tesla T4 

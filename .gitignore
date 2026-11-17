@@ -229,3 +229,5 @@ best-v2/
 best-epochs5/
 best-onlyragtruth/
 best-unified-source/
+# Phase 2 (D4): run checkpoints stay local; run JSON/JSONL files are committed
+runs/**/*.pt

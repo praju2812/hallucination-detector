@@ -1,0 +1,42 @@
+{
+  "config": {
+    "experiment": "G",
+    "model": {
+      "name": "answerdotai/ModernBERT-base",
+      "max_length": 1024,
+      "dropout": 0.1,
+      "resp_max": 384
+    },
+    "data": {
+      "train_path": "data/unified_v2/train.jsonl",
+      "val_path": "data/unified_v2/val.jsonl",
+      "test_path": "data/unified_v2/test.jsonl",
+      "query_col": "query",
+      "context_col": "context",
+      "response_col": "answer",
+      "label_col": "label",
+      "dataset_col": "source"
+    },
+    "train": {
+      "epochs": 2,
+      "batch_size": 8,
+      "lr": 2e-05,
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.06,
+      "max_grad_norm": 1.0,
+      "pos_weight": 2.3,
+      "seed": 42,
+      "eval_every_epoch": true,
+      "select_on": "pr_auc",
+      "out_dir": "/kaggle/working/runs"
+    }
+  },
+  "seed": 42,
+  "git_sha": "6294bb2",
+  "git_dirty": false,
+  "experiment": "G",
+  "input_format": "Question: {query} Context: {context}",
+  "torch_version": "2.11.0+cu130",
+  "transformers_version": "5.22.2",
+  "device_name": "Tesla T4"
+}
