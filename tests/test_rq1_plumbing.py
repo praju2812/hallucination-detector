@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import scripts.mvp_check as mvp                 # module import: pytest must not collect mvp.test_block as a test
-from scripts.report_rq1 import build_m3_summary, main as report_main
+from scripts.report_rq1 import all_flagged_f1, build_m3_summary, main as report_main, runs_table
 from scripts.score_rq1 import parity_report
 
 
@@ -84,6 +84,33 @@ def test_m3_summary_is_found_by_mvp_check(tmp_path):
     assert found == set(mvp.CLINICAL_KEYS)
     assert d["test"]["ragbench_covidqa"]["f1"] == 0.5          # F1 at threshold (a)
     assert d["test"]["medhallu"]["pr_auc"] == 0.5
+
+
+# ---- report formatting: all-flagged F1 baseline and grid-floor flag ------------------------
+
+def test_all_flagged_f1_by_hand():
+    # flag every row: P = p, R = 1, F1 = 2p / (1 + p)
+    assert all_flagged_f1(0.25) == pytest.approx(0.4)
+    assert all_flagged_f1(0.5) == pytest.approx(2 / 3)
+    assert all_flagged_f1(1.0) == pytest.approx(1.0)
+    assert all_flagged_f1(0.0) == 0.0
+
+
+def _runs_m(thr_a, thr_b):
+    return {"run": "run_seed42_x", "seed": 42,
+            "thresholds": {"ragtruth_val": thr_a,
+                           "clinical_val": {s: {"threshold": t} for s, t in zip(SRCS, thr_b)}},
+            "scoring": {"git_sha": "abc", "git_dirty": False, "checkpoint": "/x/best.pt", "device": "cpu",
+                        "device_name": "cpu", "precision": {"logits_dtype": "torch.float32", "autocast": False},
+                        "parity": None}}
+
+
+def test_runs_table_flags_grid_floor_only():
+    grid = np.linspace(0.05, 0.95, 19)              # the best_threshold grid: its floor is grid[0]
+    row = runs_table([_runs_m(float(grid[0]), [0.1, float(grid[0]), 0.15])])[2]
+    cells = [c.strip() for c in row.strip("|").split("|")]
+    thr_cells = cells[7:11]                         # thr (a), thr (b) PubMedQA, CovidQA, MedHallu
+    assert thr_cells == ["0.05 (grid floor)", "0.10", "0.05 (grid floor)", "0.15"]
 
 
 # ---- end to end on toy files (needs the src/rq1.py bodies) -----------------------------
@@ -171,6 +198,11 @@ def test_report_end_to_end(tmp_path):
                     "## Selection check: full vs clean test", "## Notes"):
         assert heading in text
     assert "—" not in text                      # no em dashes in reports
+    # the all-flagged F1 column is in the full and clean tables only
+    assert text.count("| F1 if every row flagged |") == 2
+    full_sec = text.split("## Headline: full clinical test")[1].split("## Clean clinical test")[0]
+    pub_row = next(l for l in full_sec.splitlines() if l.startswith("| PubMedQA |"))
+    assert pub_row.rstrip().endswith("| 0.4000 |")   # toy PubMedQA full: 12 / 48 positives, 2(0.25)/1.25 = 0.4
 
 
 def test_report_refuses_smoke_predictions(tmp_path):

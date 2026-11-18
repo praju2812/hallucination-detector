@@ -47,6 +47,7 @@ BOOT_SOURCE = "ragbench_covidqa"
 MEDHALLU_FIELDS = ["difficulty", "category"]
 SMALL_N = 30
 DIFFICULTY_ORDER = ["easy", "medium", "hard"]
+GRID_FLOOR = 0.05          # lowest value of the src.metrics.best_threshold grid (np.linspace(0.05, 0.95, 19))
 
 
 # ---- loading ------------------------------------------------------------------------
@@ -175,23 +176,37 @@ def _f(v, nd=4):
     return "n/a" if v is None else f"{v:.{nd}f}"
 
 
-def metrics_table(all_m: list[dict], block: list, keys: list[str], label: str, flag_small: bool = False) -> list[str]:
+def all_flagged_f1(prevalence: float) -> float:
+    """F1 of the trivial detector that flags every row as hallucinated: P = prevalence p, R = 1, so F1 = 2p / (1 + p)."""
+    return 2 * prevalence / (1 + prevalence)
+
+
+def metrics_table(all_m: list[dict], block: list, keys: list[str], label: str, flag_small: bool = False,
+                  all_flagged: bool = False) -> list[str]:
     cols = [("PR-AUC", ("pr_auc",)), ("AUROC", ("roc_auc",)),
             ("P @ (a)", ("at_ragtruth_thr", "precision")), ("R @ (a)", ("at_ragtruth_thr", "recall")),
             ("F1 @ (a)", ("at_ragtruth_thr", "f1")), ("F1 @ (b)", ("at_clinical_thr", "f1"))]
     if flag_small:
         cols += [("faithful prec @ (a)", ("at_ragtruth_thr", "faithful_precision")),
                  ("faithful prec @ (b)", ("at_clinical_thr", "faithful_precision"))]
-    head = f"| {label} | prevalence (n_pos / n) | " + " | ".join(c for c, _ in cols) + " |"
-    lines = [head, "|" + "---|" * (len(cols) + 2)]
+    extra = ["F1 if every row flagged"] if all_flagged else []
+    head = f"| {label} | prevalence (n_pos / n) | " + " | ".join([c for c, _ in cols] + extra) + " |"
+    lines = [head, "|" + "---|" * (len(cols) + len(extra) + 2)]
     for k in keys:
         ms = [_get(m, block)[k] for m in all_m]
         name = NAMES.get(k, k)
         if flag_small and ms[0]["n"] < SMALL_N:
             name += f" (n < {SMALL_N})"
         cells = [agg_cell([_get(m, path) for m in ms]) for _, path in cols]
+        if all_flagged:                      # depends on the labels only, so it is the same for every seed
+            cells.append(_f(all_flagged_f1(ms[0]["prevalence"])))
         lines.append(f"| {name} | {prev_cell(ms[0])} | " + " | ".join(cells) + " |")
     return lines
+
+
+def _thr(t: float) -> str:
+    """Threshold cell; a value at the grid floor is flagged (F1 was still rising at the lowest threshold tried)."""
+    return f"{t:.2f} (grid floor)" if np.isclose(t, GRID_FLOOR) else f"{t:.2f}"
 
 
 def runs_table(all_m: list[dict]) -> list[str]:
@@ -206,8 +221,8 @@ def runs_table(all_m: list[dict]) -> list[str]:
         lines.append(
             f"| {m['run']} | {m['seed']} | {sc['git_sha']} | {sc['git_dirty']} | {sc['checkpoint']} | "
             f"{sc['device']} ({sc['device_name']}) | {prec.get('logits_dtype')}, autocast={prec.get('autocast')} | "
-            f"{m['thresholds']['ragtruth_val']:.2f} | "
-            + " | ".join(f"{tb[s]['threshold']:.2f}" for s in SOURCES)
+            f"{_thr(m['thresholds']['ragtruth_val'])} | "
+            + " | ".join(_thr(tb[s]['threshold']) for s in SOURCES)
             + (f" | {par['max_abs_diff']:.2e} / {par['mean_abs_diff']:.2e} | {_f(par['auroc_phase2'])} / "
                f"{_f(par['auroc_new'])} | {par['crossings']} of {par['n']} ({'PASS' if par['passed'] else 'FAIL'}) |"
                if par else " | not run | not run | not run |"))
@@ -287,8 +302,10 @@ def format_report(all_m: list[dict]) -> str:
          "Threshold (b) = tuned on clean clinical validation, same grid as training (secondary). "
          "Headline test set = test_full; clean test reported beside it.", "",
          "## Runs", ""] + runs_table(all_m) + [
-         "", "## Headline: full clinical test", ""] + metrics_table(all_m, ["test_full"], SOURCES, "source") + [
-         "", "## Clean clinical test", ""] + metrics_table(all_m, ["test_clean"], SOURCES, "source") + [
+         "", "## Headline: full clinical test", ""] + metrics_table(all_m, ["test_full"], SOURCES, "source",
+                                                                    all_flagged=True) + [
+         "", "## Clean clinical test", ""] + metrics_table(all_m, ["test_clean"], SOURCES, "source",
+                                                           all_flagged=True) + [
          "", "## Drop from RAGTruth test (Phase 2) to each clinical source", "",
          "Drop = RAGTruth minus clinical, paired by seed, then mean ± SD. PR-AUC depends on prevalence (compare it with "
          "the prevalence columns); AUROC does not.", ""] + drop_table(all_m)
