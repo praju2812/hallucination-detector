@@ -30,7 +30,7 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 from src.data import HallucinationDataset
-from src.encoding import Collator, build_tokenizer
+from src.encoding import Collator, build_tokenizer, truncation_mode
 from src.rq1 import assign_row_keys, load_g_checkpoint
 from src.train import evaluate, get_device, get_device_name, get_git_dirty, get_git_sha, prediction_records
 from utils.io import read_jsonl, write_jsonl
@@ -60,7 +60,8 @@ def make_eval_loader(path: str, cfg: dict, tokenizer, batch_size: int, keep: lis
     ds = HallucinationDataset(path, cfg["data"])
     if keep is not None:
         ds.rows = [ds.rows[i] for i in keep]
-    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"])
+    # an old G snapshot has no model.truncation, so it scores with the legacy rule it was trained with
+    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"], truncation_mode(cfg["model"]))
     return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
 
 

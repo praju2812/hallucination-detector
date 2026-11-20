@@ -10,7 +10,7 @@ Definitions (all from the real Collator.encode_with_response_budget output):
                   i.e. the "Question: {query} Context:" head
     ctx truncated      : kept first segment shorter than ref_first
     ctx 0 tokens       : kept first segment no longer than query_part
-    resp > resp_max    : response longer than resp_max (cut to resp_max, expected)
+    resp > resp_max    : response longer than resp_max (legacy: always cut to resp_max; fit_first: cut only on overflow)
     resp overflow cut  : kept response shorter than min(response length, resp_max)
 At max_length 1024 the last two "must be 0" columns (ctx 0 tokens, resp overflow cut) are checked.
 
@@ -36,7 +36,7 @@ import numpy as np
 import yaml
 
 sys.path.append(str(Path(__file__).parent.parent))
-from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
+from src.encoding import INPUT_FORMAT, Collator, build_tokenizer, truncation_mode
 from utils.io import read_jsonl, write_jsonl
 
 SPLITS = ("train", "val", "test")
@@ -98,7 +98,7 @@ def main() -> None:
         cfg = yaml.safe_load(f)
     d, m = cfg["data"], cfg["model"]
     tok = build_tokenizer(m["name"])
-    coll = Collator(tok, m["max_length"], m["resp_max"])
+    coll = Collator(tok, m["max_length"], m["resp_max"], truncation_mode(m))
 
     splits = list(SPLITS)
     for sp in OPTIONAL_SPLITS:
@@ -122,7 +122,8 @@ def main() -> None:
         write_jsonl(flags, args.per_row)
         print(f"  wrote {len(flags)} per-row flags to {args.per_row}", file=sys.stderr)
 
-    print(f"\nconfig {args.config}: max_length {m['max_length']}, resp_max {m['resp_max']}; data {args.data_dir}"
+    print(f"\nconfig {args.config}: max_length {m['max_length']}, resp_max {m['resp_max']}, "
+          f"truncation {coll.truncation}; data {args.data_dir}"
           + (f"; LIMIT {args.limit} rows/split (not for the report)" if args.limit else ""))
     print(f"input format: {INPUT_FORMAT!r} [SEP] response\n")
     print("| split | source | n | ctx truncated | ctx 0 tokens | resp > resp_max | resp overflow cut "

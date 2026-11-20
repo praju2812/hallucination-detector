@@ -213,3 +213,40 @@ def test_report_refuses_smoke_predictions(tmp_path):
     with pytest.raises(ValueError):
         report_main(["--rq1-root", str(rq1), "--runs-root", str(runs), "--data-dir", str(data),
                      "--out-md", str(tmp_path / "x.md"), "--n-boot", "10"])
+
+
+# ---- score_rq1.make_eval_loader: truncation mode from the run's snapshot (encoder-fit-first, 20 Nov 2026) ----
+class _SpecialTokensOnly:
+    """Just enough tokenizer for Collator.__post_init__; the loader is never iterated, so nothing is encoded."""
+    def num_special_tokens_to_add(self, pair=True):
+        return 3
+
+
+def _fake_snapshot(tmp_path, truncation):
+    """A config_snapshot.json-like dict built from base.yaml; truncation=None leaves model.truncation out,
+    as in every G snapshot written before 20 Nov 2026."""
+    import copy
+    import yaml
+    with open("configs/base.yaml") as f:
+        cfg = copy.deepcopy(yaml.safe_load(f))
+    rows = [{"query": "q", "context": "c", "answer": "a", "label": 0, "source": "ragtruth"}]
+    path = tmp_path / "val.jsonl"
+    _write_jsonl(path, rows)
+    cfg["data"]["val_path"] = str(path)
+    if truncation is None:
+        cfg["model"].pop("truncation", None)
+    else:
+        cfg["model"]["truncation"] = truncation
+    return {"config": cfg, "experiment": "G"}
+
+
+@pytest.mark.parametrize("truncation,expected", [("fit_first", "fit_first"), (None, "legacy")])
+def test_make_eval_loader_takes_truncation_from_snapshot(tmp_path, truncation, expected):
+    from scripts.score_rq1 import make_eval_loader
+    snapshot = _fake_snapshot(tmp_path, truncation)
+    assert ("truncation" in snapshot["config"]["model"]) == (truncation is not None)   # guard: the case is what it claims
+    cfg = snapshot["config"]
+    loader = make_eval_loader(cfg["data"]["val_path"], cfg, _SpecialTokensOnly(), batch_size=2)
+    coll = loader.collate_fn
+    assert coll.truncation == expected
+    assert (coll.max_length, coll.resp_max) == (cfg["model"]["max_length"], cfg["model"]["resp_max"])

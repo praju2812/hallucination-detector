@@ -31,6 +31,17 @@ def test_snapshot_records_required_fields():
     json.dumps(snap)  # must be serialisable
 
 
+def test_snapshot_records_truncation_mode():
+    """base.yaml says fit_first; a config without the key (every run before 20 Nov 2026) records legacy."""
+    cfg = copy.deepcopy(BASE)
+    assert build_run_snapshot(cfg)["truncation"] == "fit_first"
+    del cfg["model"]["truncation"]
+    assert build_run_snapshot(cfg)["truncation"] == "legacy"
+    cfg["model"]["truncation"] = "nope"
+    with pytest.raises(ValueError):
+        build_run_snapshot(cfg)
+
+
 def test_snapshot_seed_follows_cli_override():
     cfg = copy.deepcopy(BASE)
     cfg["train"]["seed"] = 43
