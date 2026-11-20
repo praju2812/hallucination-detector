@@ -8,7 +8,7 @@ exactly as for the general data (scripts/analysis/a_lengths.py): special tokens 
 Sources: ragbench_pubmedqa, ragbench_covidqa, medhallu, and all clinical rows pooled; scopes train / test / all splits.
 
 Run: python -m scripts.analysis.a_lengths_clinical
-Writes: results/analysis_2026-11-11/a_lengths_clinical.json; prints markdown tables.
+Writes: results/analysis_<today>/a_lengths_clinical.json (the 11 Nov output is a record and is never overwritten); prints markdown tables.
 """
 
 from __future__ import annotations

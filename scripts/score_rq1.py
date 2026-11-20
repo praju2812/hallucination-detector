@@ -3,9 +3,10 @@
 Clean test is NOT scored here: scripts/report_rq1.py derives it from test_full by row key.
 
 Smoke (timing + parity with Phase 2, never reported):
-    python -m scripts.score_rq1 --run-dir runs/run_seed42_20261110_120515 --limit 100 --parity 100 --out-root results/rq1_smoke
+    python -m scripts.score_rq1 --run-dir runs/<run_seedS_timestamp> --limit 100 --parity 100 --out-root results/rq1_smoke
 Full run, one seed:
-    python -m scripts.score_rq1 --run-dir runs/run_seed42_20261110_120515 --parity 100
+    python -m scripts.score_rq1 --run-dir runs/<run_seedS_timestamp> --parity 100
+(<run_seedS_timestamp> = a G run folder trained with model.truncation: fit_first.)
 
 Writes <out-root>/<run folder name>/predictions.jsonl and scoring.json.
 Parity: re-scores the first N RAGTruth rows of the run's own val file (data/unified_v2/val.jsonl) and compares
@@ -30,7 +31,7 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 
 from src.data import HallucinationDataset
-from src.encoding import Collator, build_tokenizer
+from src.encoding import Collator, build_tokenizer, truncation_mode
 from src.rq1 import assign_row_keys, load_g_checkpoint
 from src.train import evaluate, get_device, get_device_name, get_git_dirty, get_git_sha, prediction_records
 from utils.io import read_jsonl, write_jsonl
@@ -60,7 +61,8 @@ def make_eval_loader(path: str, cfg: dict, tokenizer, batch_size: int, keep: lis
     ds = HallucinationDataset(path, cfg["data"])
     if keep is not None:
         ds.rows = [ds.rows[i] for i in keep]
-    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"])
+    # the run's own truncation mode; a snapshot without model.truncation (pre-20 Nov legacy run) raises
+    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"], truncation_mode(cfg["model"]))
     return DataLoader(ds, batch_size=batch_size, shuffle=False, collate_fn=collate, num_workers=0)
 
 
@@ -221,6 +223,7 @@ def main(argv=None) -> int:
         "run": run_name,
         "seed": snapshot["seed"],
         "experiment": snapshot["experiment"],
+        "truncation": truncation_mode(cfg["model"]),   # from the run snapshot (config.model.truncation)
         "checkpoint": os.path.abspath(ckpt),
         "checkpoint_sha1": sha1_file(ckpt),
         "train_git_sha": snapshot.get("git_sha"),

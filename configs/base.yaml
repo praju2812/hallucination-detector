@@ -12,6 +12,7 @@ model:
   max_length: 1024      # covers p95 (1006); truncates only ~5% instead of 21%
   dropout: 0.1
   resp_max: 384        # max length of the response (answer) to keep; rest is truncated
+  truncation: "fit_first"  # trim only on overflow (src/encoding.py); the only mode since 20 Nov 2026
   
 # These files are the output of your Phase 1 (unified schema + group-based splits).
 # Point them at whatever you already built. Column names are parametrised below

@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
 from src.data import HallucinationDataset
-from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
+from src.encoding import INPUT_FORMAT, Collator, build_tokenizer, truncation_mode
 from src.model import HallucinationDetector, build_loss
 from src.metrics import per_source_breakdown, probs_from_logits, ranking_metrics, best_threshold, thresholded_metrics
 from utils.io import write_jsonl
@@ -128,6 +128,7 @@ def build_run_snapshot(cfg: dict) -> dict:
         "git_dirty": get_git_dirty(),
         "experiment": experiment,
         "input_format": INPUT_FORMAT,
+        "truncation": truncation_mode(cfg["model"]),  # raises if the config has no model.truncation
         "torch_version": torch.__version__,
         "transformers_version": transformers.__version__,
         "device_name": get_device_name(),
@@ -163,7 +164,7 @@ def prediction_records(split: str, rows: list[dict], labels, probs, cfg_data: di
 def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
                 generator: torch.Generator | None = None, sources: list | None = None) -> DataLoader:
     ds = HallucinationDataset(path, cfg["data"], sources=sources)
-    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"])
+    collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"], truncation_mode(cfg["model"]))
 
     #  The DataLoader is a PyTorch utility that provides an iterable over the dataset. 
     # It handles batching, shuffling, and loading data in parallel using multiprocessing workers.

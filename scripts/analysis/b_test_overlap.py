@@ -17,7 +17,7 @@ Reported:
   B7 general test rows touching clinical train (G+C)
 
 Run: python -m scripts.analysis.b_test_overlap
-Writes: results/analysis_2026-11-11/b_test_overlap.json; prints markdown tables. Writes nothing under data/.
+Writes: results/analysis_<today>/b_test_overlap.json (the 11 Nov output is a record and is never overwritten); prints markdown tables. Writes nothing under data/.
 """
 
 from __future__ import annotations

@@ -8,6 +8,7 @@ model:
   max_length: 256
   dropout: 0.1
   resp_max: 128        # must be < max_length - special tokens (Collator checks this)
+  truncation: "fit_first"  # the only mode (src/encoding.py)
 
 
 data:
