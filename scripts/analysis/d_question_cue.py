@@ -13,7 +13,7 @@ TF-IDF = TfidfVectorizer(lowercase=True, stop_words="english"), fitted per sourc
 context texts (all splits); rows are L2-normalised, so cosine = dot product.
 
 Run: python -m scripts.analysis.d_question_cue
-Writes: results/analysis_2026-11-11/d_question_cue.json; prints markdown tables.
+Writes: results/analysis_<today>/d_question_cue.json (the 11 Nov output is a record and is never overwritten); prints markdown tables.
 """
 
 from __future__ import annotations

@@ -8,8 +8,10 @@ This script measures, on all RAGTruth Summary rows of data/unified_v2 (train/val
   C4  correlation of G's predicted prob with response length and ratio on the Summary TEST rows, per seed
   C5  RAGTruth QA: is the dropped instruction identical on all 989 QA sources?
 
-Run: python -m scripts.analysis.c_summary_length_cue [--runs-glob ../hd-phase2/runs/run_seed*/predictions.jsonl]
-Writes: results/analysis_2026-11-11/c_summary_length_cue.json; prints markdown tables.
+Run: python -m scripts.analysis.c_summary_length_cue [--runs-glob 'runs/run_seed*/predictions.jsonl']
+         [--out-dir results/analysis_<today>]
+Writes: <out-dir>/c_summary_length_cue.json (default results/analysis_<today>; never results/analysis_2026-11-11/);
+prints markdown tables.
 """
 
 from __future__ import annotations
@@ -24,7 +26,8 @@ from pathlib import Path
 import numpy as np
 from scipy import stats
 
-from scripts.analysis.common import (BOOT_SEED, N_BOOT, RUNS_GLOB, SPLITS, auroc, group_bootstrap_ci, load_unified_v2,
+from scripts.analysis.common import (BOOT_SEED, N_BOOT, RUNS_GLOB, SPLITS, auroc, check_out_dir, group_bootstrap_ci,
+                                     load_unified_v2,
                                      load_source_info, load_responses, md_table, stratified_auroc, write_json)
 from utils.io import read_jsonl
 
@@ -132,7 +135,9 @@ def prediction_correlations(pattern: str, test_rows: list[dict], summ_test: dict
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs-glob", default=RUNS_GLOB)
+    ap.add_argument("--out-dir", default=None, help="default: results/analysis_<today>; never results/analysis_2026-11-11/")
     args = ap.parse_args()
+    out_dir = check_out_dir(args.out_dir)   # refuse a bad folder before the slow part
 
     data = load_unified_v2()
     info = load_source_info()
@@ -276,7 +281,7 @@ def main() -> None:
     for t, n in qa["templates_masked"].items():
         print(f"\nTemplate ({n} sources):\n```\n{t}\n```")
 
-    path = write_json(result, "c_summary_length_cue.json")
+    path = write_json(result, "c_summary_length_cue.json", out_dir)
     print(f"\nWrote {path}")
 
 

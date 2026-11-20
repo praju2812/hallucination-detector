@@ -8,8 +8,10 @@ Also: A2b smallest 256-multiple window covering 95% / 97.5% of each group (train
 RAGTruth Summary test rows with vs without context truncation (Phase 2 flags + predictions).
 Clinical sources: pending (they need Prajakta's build_clinical functions).
 
-Run: python -m scripts.analysis.a_lengths [--flags ../hd-phase2/results/truncation_flags_v2.jsonl] [--runs-glob ...]
-Writes: results/analysis_2026-11-11/a_lengths.json; prints markdown tables.
+Run: python -m scripts.analysis.a_lengths [--flags results/truncation_flags_v2.jsonl]
+         [--runs-glob 'runs/run_seed*/predictions.jsonl'] [--out-dir results/analysis_<today>]
+Writes: <out-dir>/a_lengths.json (default results/analysis_<today>; never results/analysis_2026-11-11/);
+prints markdown tables.
 """
 
 from __future__ import annotations
@@ -22,8 +24,8 @@ import numpy as np
 from scipy import stats
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from scripts.analysis.common import (REPO, RUNS_GLOB, SPLITS, load_config, load_tokenizer, load_unified_v2, full_lengths,
-                                     self_check_lengths, md_table, write_json)
+from scripts.analysis.common import (REPO, RUNS_GLOB, SPLITS, check_out_dir, load_config, load_tokenizer, load_unified_v2,
+                                     full_lengths, self_check_lengths, md_table, write_json)
 from utils.io import read_jsonl
 
 WINDOWS = (512, 1024, 1536, 2048, 4096)
@@ -32,7 +34,7 @@ REF_WINDOW = 1024
 WINDOW_STEP = 256
 COVERAGE_TARGETS = (95.0, 97.5)
 COVERAGE_GROUPS = ("halueval", "ragtruth_qa", "ragtruth_summary", "all sources")
-DEFAULT_FLAGS = str(REPO.parent / "hd-phase2" / "results" / "truncation_flags_v2.jsonl")
+DEFAULT_FLAGS = str(REPO / "results" / "truncation_flags_v2.jsonl")  # report_truncation.py --per-row; same under fit_first
 # Phase 1: all 269 truncated RAGTruth test rows; Part A: no QA row exceeds 1024 -> (Summary truncated, untruncated, QA truncated)
 EXPECTED_SUMMARY_TRUNC = (269, 631, 0)
 
@@ -159,7 +161,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--flags", default=DEFAULT_FLAGS, help="per-row truncation flags from Phase 2 report_truncation.py")
     ap.add_argument("--runs-glob", default=RUNS_GLOB)
+    ap.add_argument("--out-dir", default=None, help="default: results/analysis_<today>; never results/analysis_2026-11-11/")
     args = ap.parse_args()
+    out_dir = check_out_dir(args.out_dir)   # refuse a bad folder before the slow part
     cfg = load_config()
     resp_max = cfg["model"]["resp_max"]
     tok = load_tokenizer(cfg)
@@ -282,7 +286,7 @@ def main() -> None:
                      round(v["response"]["p95"]), v["response"]["max"], round(v["response"]["pct_over_resp_max"], 1)]
                     for g, v in res.items()]))
 
-    path = write_json(result, "a_lengths.json")
+    path = write_json(result, "a_lengths.json", out_dir)
     print(f"\nWrote {path}")
 
 
