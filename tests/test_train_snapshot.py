@@ -32,14 +32,16 @@ def test_snapshot_records_required_fields():
 
 
 def test_snapshot_records_truncation_mode():
-    """base.yaml says fit_first; a config without the key (every run before 20 Nov 2026) records legacy."""
+    """base.yaml says fit_first; a config without the key, or with any other mode (legacy removed), raises."""
     cfg = copy.deepcopy(BASE)
     assert build_run_snapshot(cfg)["truncation"] == "fit_first"
-    del cfg["model"]["truncation"]
-    assert build_run_snapshot(cfg)["truncation"] == "legacy"
-    cfg["model"]["truncation"] = "nope"
-    with pytest.raises(ValueError):
-        build_run_snapshot(cfg)
+    for bad in (None, "legacy", "nope"):
+        if bad is None:
+            del cfg["model"]["truncation"]
+        else:
+            cfg["model"]["truncation"] = bad
+        with pytest.raises(ValueError):
+            build_run_snapshot(cfg)
 
 
 def test_snapshot_seed_follows_cli_override():

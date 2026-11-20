@@ -128,7 +128,7 @@ def build_run_snapshot(cfg: dict) -> dict:
         "git_dirty": get_git_dirty(),
         "experiment": experiment,
         "input_format": INPUT_FORMAT,
-        "truncation": truncation_mode(cfg["model"]),  # resolved: "legacy" when the config has no model.truncation
+        "truncation": truncation_mode(cfg["model"]),  # raises if the config has no model.truncation
         "torch_version": torch.__version__,
         "transformers_version": transformers.__version__,
         "device_name": get_device_name(),

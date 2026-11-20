@@ -11,20 +11,22 @@ from dataclasses import dataclass
 INPUT_FORMAT = "Question: {query} Context: {context}"
 
 # How encode_with_response_budget truncates (config key model.truncation, recorded in config_snapshot.json).
-#   fit_first: nothing is cut when the row fits; on overflow see fit_first_lengths. Every new run (G retrained, C, G+C).
-#   legacy:    the response is always cut to resp_max, the context gets the rest. Kept ONLY to reproduce the
-#              G runs trained before 20 Nov 2026 (decision, 20 Nov 2026).
-TRUNCATION_MODES = ("fit_first", "legacy")
+#   fit_first: nothing is cut when the row fits; on overflow see fit_first_lengths.
+# The earlier "legacy" rule (response always cut to resp_max) was removed on 20 Nov 2026 together with the G runs
+# trained with it; G is retrained with fit_first.
+TRUNCATION_MODES = ("fit_first",)
 
 
 def truncation_mode(model_cfg: dict) -> str:
-    """The truncation mode for a config's `model` section.
+    """The truncation mode for a config's `model` section (base.yaml: fit_first).
 
-    A config without the key predates the option, so it was encoded with the legacy rule: an old G run's
-    config_snapshot.json therefore still scores with legacy. New configs set the key explicitly (base.yaml: fit_first).
-    Raises ValueError for any other value.
+    Raises ValueError if the key is missing (a config or run snapshot from before 20 Nov 2026, encoded with the
+    removed legacy rule) or holds any other value.
     """
-    mode = model_cfg.get("truncation", "legacy")
+    if "truncation" not in model_cfg:
+        raise ValueError("model.truncation missing: the config predates the fit_first rule (legacy encoding, removed); "
+                         f"set it to one of {TRUNCATION_MODES}")
+    mode = model_cfg["truncation"]
     if mode not in TRUNCATION_MODES:
         raise ValueError(f"model.truncation must be one of {TRUNCATION_MODES}, got {mode!r}")
     return mode
@@ -47,7 +49,7 @@ def fit_first_lengths(n_context: int, n_response: int, available: int, resp_max:
     Invariants (tests/test_encoding.py):
         - keep_context <= n_context, keep_response <= n_response, keep_context + keep_response <= available.
         - whenever anything is cut, keep_context + keep_response == available.
-        - long context (available - n_context <= resp_max): same counts as the legacy rule.
+        - long context (available - n_context <= resp_max): the response keeps min(n_response, resp_max).
         - spare room (short context, long response): keep_response can exceed resp_max.
     Raises:
         ValueError if keep_context or keep_response would be 0 (or below 0).
@@ -80,7 +82,7 @@ class Collator:
     tokenizer: Any
     max_length: int
     resp_max: int
-    truncation: str  # required, no default: callers pass truncation_mode(cfg["model"]), or "legacy" only to reproduce old G runs
+    truncation: str  # required, no default: callers pass truncation_mode(cfg["model"])
 
     def __post_init__(self):
         if self.truncation not in TRUNCATION_MODES:
@@ -123,25 +125,21 @@ class Collator:
             first_segment comes from INPUT_FORMAT.format(query=query, context=context).
 
         Budget = max_length - num_special_tokens_to_add(pair=True)
-        self.truncation == "legacy":
-            1. query part ("Question: {query} Context:"): never truncated.
-            2. response: keeps up to resp_max tokens, but only what is left after the query part.
-            3. context: gets whatever is left (may be 0 tokens).
-        self.truncation == "fit_first": the query part is never truncated; the context and response counts come
-            from fit_first_lengths (nothing cut when the row fits). Raises ValueError if either ends with 0 tokens.
+        self.truncation == "fit_first": the query part ("Question: {query} Context:") is never truncated; the context
+            and response counts come from fit_first_lengths (nothing cut when the row fits).
 
         Raises ValueError if:
+            - the context or the response would end with 0 tokens (fit_first_lengths);
             - the query part alone does not fit in the budget;
             - the query part's tokens are not a prefix of the first segment's tokens
               (a tokenizer boundary change at "Context:" would otherwise make the
               query-part count wrong without any error).
 
-        Invariants, legacy (tests/test_encoding.py):
-            - short inputs: identical to tokenizer(INPUT_FORMAT.format(...), response)["input_ids"].
+        Invariants (tests/test_encoding.py):
+            - rows that fit: identical to tokenizer(INPUT_FORMAT.format(...), response)["input_ids"].
             - kept first segment is a PREFIX of tokenizer(INPUT_FORMAT.format(...), add_special_tokens=False).
-            - kept response is a PREFIX of tokenizer(response, add_special_tokens=False), never longer than resp_max.
+            - kept response is a PREFIX of tokenizer(response, add_special_tokens=False).
             - len(output) <= max_length; == max_length whenever anything was truncated.
-            - only the context is cut, except in overflow (query + response > budget), where the response gives way.
         """
         # tokenize the response alone (no special tokens), as in v1.
         resp_ids = self.tokenizer(response, add_special_tokens=False)["input_ids"]
@@ -152,7 +150,7 @@ class Collator:
         #work out how many of those first-segment tokens belong to the query part.
         query_part_ids = self.tokenizer(INPUT_FORMAT.format(query=query, context="").rstrip(), add_special_tokens=False)["input_ids"]
 
-        # budget arithmetic in priority order: query part, then response (<= resp_max), then context.
+        # the query part is never cut, so it must fit in the budget on its own.
         budget = self.max_length - self.tokenizer.num_special_tokens_to_add(pair=True)
         if len(query_part_ids) > budget:
             raise ValueError(f"query part alone ({len(query_part_ids)} tokens) exceeds budget ({budget})")
@@ -160,25 +158,11 @@ class Collator:
         if query_part_ids != first_ids[:len(query_part_ids)]:
             raise ValueError("query part is not a prefix of the first segment; check INPUT_FORMAT")
 
-        if self.truncation == "fit_first":
-            # counts come from fit_first_lengths; each part keeps its first tokens, the query part is untouched.
-            n_query = len(query_part_ids)
-            keep_ctx, keep_resp = fit_first_lengths(len(first_ids) - n_query, len(resp_ids), budget - n_query,
-                                                    self.resp_max)
-            first_ids, resp_ids = first_ids[:n_query + keep_ctx], resp_ids[:keep_resp]
-        else:
-            # legacy rule, unchanged
-            if len(resp_ids) > self.resp_max:
-                # cut the response to resp_max
-                resp_ids = resp_ids[:self.resp_max]
-
-            # if the query part + response exceeds the budget, cut the response to fit.
-            if len(query_part_ids) + len(resp_ids) > budget:
-                resp_ids = resp_ids[:budget - len(query_part_ids)]
-
-            # query and response are now within budget; if the first segment is too long, cut it to fit the remaining budget.
-            if len(resp_ids) + len(first_ids) > budget:
-                first_ids = first_ids[:budget - len(resp_ids)]
+        # counts come from fit_first_lengths; each part keeps its first tokens, the query part is untouched.
+        n_query = len(query_part_ids)
+        keep_ctx, keep_resp = fit_first_lengths(len(first_ids) - n_query, len(resp_ids), budget - n_query,
+                                                self.resp_max)
+        first_ids, resp_ids = first_ids[:n_query + keep_ctx], resp_ids[:keep_resp]
 
         cls_id = self.tokenizer.cls_token_id
         sep_id = self.tokenizer.sep_token_id

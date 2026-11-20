@@ -10,7 +10,7 @@ Definitions (all from the real Collator.encode_with_response_budget output):
                   i.e. the "Question: {query} Context:" head
     ctx truncated      : kept first segment shorter than ref_first
     ctx 0 tokens       : kept first segment no longer than query_part
-    resp > resp_max    : response longer than resp_max (legacy: always cut to resp_max; fit_first: cut only on overflow)
+    resp > resp_max    : response longer than resp_max (fit_first cuts it only on overflow)
     resp overflow cut  : kept response shorter than min(response length, resp_max)
 At max_length 1024 the last two "must be 0" columns (ctx 0 tokens, resp overflow cut) are checked.
 

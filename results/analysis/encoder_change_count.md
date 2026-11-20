@@ -1,3 +1,4 @@
+Produced by scripts/analysis/encoder_change_count.py at commit 966bc8d (removed with the legacy mode).
 Encoding changes, legacy -> fit_first (max_length 1024, resp_max 384)
 | source | split | rows | changed | % changed | now uncut | still cut | fit_first raises |
 |---|---|---|---|---|---|---|---|

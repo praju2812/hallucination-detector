@@ -120,7 +120,7 @@ def full_lengths(tok, rows: list[dict], batch: int = 512) -> dict[str, np.ndarra
 def self_check_lengths(tok, rows: list[dict], totals: np.ndarray, n: int = 200, seed: int = 0) -> int:
     """Assert full_lengths matches the real encoder with a window too large to truncate. Returns rows checked."""
     big = 10 ** 6
-    coll = Collator(tok, big, big - 10, "legacy")  # nothing is cut at this window; legacy keeps the 11 Nov analysis as run
+    coll = Collator(tok, big, big - 10, "fit_first")  # nothing is cut at this window
     idx = np.random.default_rng(seed).choice(len(rows), size=min(n, len(rows)), replace=False)
     for i in idx:
         r = rows[i]

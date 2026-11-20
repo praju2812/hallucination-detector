@@ -73,13 +73,14 @@ def _block(src_names):
 
 def test_m3_summary_is_found_by_mvp_check(tmp_path):
     srcs = ["ragbench_pubmedqa", "ragbench_covidqa", "medhallu"]
-    metrics = {"seed": 42, "experiment": "G", "run": "run_seed42_x",
+    metrics = {"seed": 42, "experiment": "G", "truncation": "fit_first", "run": "run_seed42_x",
                "test_full": _block(srcs), "test_clean": _block(srcs)}
     summ = build_m3_summary(metrics)
     p = tmp_path / "run_seed42_x.json"
     p.write_text(json.dumps(summ))
     d = json.loads(p.read_text())
     assert d["seed"] == 42 and "per_source" not in d
+    assert d["truncation"] == "fit_first"
     found = {mvp.clinical_key(k) for k in mvp.test_block(d)}
     assert found == set(mvp.CLINICAL_KEYS)
     assert d["test"]["ragbench_covidqa"]["f1"] == 0.5          # F1 at threshold (a)
@@ -97,7 +98,7 @@ def test_all_flagged_f1_by_hand():
 
 
 def _runs_m(thr_a, thr_b):
-    return {"run": "run_seed42_x", "seed": 42,
+    return {"run": "run_seed42_x", "seed": 42, "truncation": "fit_first",
             "thresholds": {"ragtruth_val": thr_a,
                            "clinical_val": {s: {"threshold": t} for s, t in zip(SRCS, thr_b)}},
             "scoring": {"git_sha": "abc", "git_dirty": False, "checkpoint": "/x/best.pt", "device": "cpu",
@@ -109,7 +110,8 @@ def test_runs_table_flags_grid_floor_only():
     grid = np.linspace(0.05, 0.95, 19)              # the best_threshold grid: its floor is grid[0]
     row = runs_table([_runs_m(float(grid[0]), [0.1, float(grid[0]), 0.15])])[2]
     cells = [c.strip() for c in row.strip("|").split("|")]
-    thr_cells = cells[7:11]                         # thr (a), thr (b) PubMedQA, CovidQA, MedHallu
+    assert cells[2] == "fit_first"                  # truncation column
+    thr_cells = cells[8:12]                         # thr (a), thr (b) PubMedQA, CovidQA, MedHallu
     assert thr_cells == ["0.05 (grid floor)", "0.10", "0.05 (grid floor)", "0.15"]
 
 
@@ -159,7 +161,7 @@ def _make_toy(tmp_path, seeds=(42, 43)):
                               "label": r["label"], "prob": prob, "row_key": k,
                               "difficulty": r["difficulty"], "category": r["category"]})
         _write_jsonl(rq1 / run / "predictions.jsonl", preds)
-        scoring = {"run": run, "seed": seed, "experiment": "G", "checkpoint": "/x/best.pt", "git_sha": "abc",
+        scoring = {"run": run, "seed": seed, "experiment": "G", "truncation": "fit_first", "checkpoint": "/x/best.pt", "git_sha": "abc",
                    "git_dirty": False, "device": "cpu", "device_name": "cpu",
                    "precision": {"param_dtype": "torch.float32", "logits_dtype": "torch.float32", "autocast": False},
                    "torch_version": "t", "transformers_version": "tf", "limit": None,
@@ -190,7 +192,9 @@ def test_report_end_to_end(tmp_path):
         assert m["thresholds"]["ragtruth_val"] == 0.4
         assert m["thresholds"]["clinical_val"]["ragbench_covidqa"]["tuned_on"] == ["ragbench_covidqa", "ragbench_pubmedqa"]
         assert set(m["medhallu_by_difficulty"]["test_full"]) == {"easy", "medium", "hard"}
+        assert m["truncation"] == "fit_first"
         summ = json.loads((rq1 / f"run_seed{seed}_x.json").read_text())
+        assert summ["truncation"] == "fit_first"
         assert {mvp.clinical_key(k) for k in mvp.test_block(summ)} == set(mvp.CLINICAL_KEYS)
     text = md.read_text()
     for heading in ("## Headline: full clinical test", "## Clean clinical test", "## Drop from RAGTruth test",
@@ -213,6 +217,35 @@ def test_report_refuses_smoke_predictions(tmp_path):
     with pytest.raises(ValueError):
         report_main(["--rq1-root", str(rq1), "--runs-root", str(runs), "--data-dir", str(data),
                      "--out-md", str(tmp_path / "x.md"), "--n-boot", "10"])
+
+
+def _set_scoring(rq1, run, **changes):
+    p = rq1 / run / "scoring.json"
+    sc = json.loads(p.read_text())
+    for k, v in changes.items():
+        if v is None:
+            sc.pop(k, None)
+        else:
+            sc[k] = v
+    p.write_text(json.dumps(sc))
+
+
+def test_report_refuses_scoring_without_truncation(tmp_path):
+    """A scoring.json from before truncation was recorded (the pre-20 Nov G runs) is not reportable."""
+    data, rq1, runs = _make_toy(tmp_path, seeds=(42,))
+    _set_scoring(rq1, "run_seed42_x", truncation=None)
+    with pytest.raises(ValueError, match="truncation"):
+        report_main(["--rq1-root", str(rq1), "--runs-root", str(runs), "--data-dir", str(data),
+                     "--out-md", str(tmp_path / "x.md"), "--n-boot", "10"])
+
+
+def test_report_refuses_mixed_truncation_modes(tmp_path):
+    data, rq1, runs = _make_toy(tmp_path)
+    _set_scoring(rq1, "run_seed43_x", truncation="other")
+    with pytest.raises(ValueError, match="different truncation modes"):
+        report_main(["--rq1-root", str(rq1), "--runs-root", str(runs), "--data-dir", str(data),
+                     "--out-md", str(tmp_path / "x.md"), "--n-boot", "10"])
+    assert not (rq1 / "run_seed42_x.json").exists()     # refused before any file was written
 
 
 # ---- score_rq1.make_eval_loader: truncation mode from the run's snapshot (encoder-fit-first, 20 Nov 2026) ----
@@ -240,13 +273,19 @@ def _fake_snapshot(tmp_path, truncation):
     return {"config": cfg, "experiment": "G"}
 
 
-@pytest.mark.parametrize("truncation,expected", [("fit_first", "fit_first"), (None, "legacy")])
-def test_make_eval_loader_takes_truncation_from_snapshot(tmp_path, truncation, expected):
+def test_make_eval_loader_takes_truncation_from_snapshot(tmp_path):
     from scripts.score_rq1 import make_eval_loader
-    snapshot = _fake_snapshot(tmp_path, truncation)
-    assert ("truncation" in snapshot["config"]["model"]) == (truncation is not None)   # guard: the case is what it claims
-    cfg = snapshot["config"]
+    cfg = _fake_snapshot(tmp_path, "fit_first")["config"]
     loader = make_eval_loader(cfg["data"]["val_path"], cfg, _SpecialTokensOnly(), batch_size=2)
     coll = loader.collate_fn
-    assert coll.truncation == expected
+    assert coll.truncation == "fit_first"
     assert (coll.max_length, coll.resp_max) == (cfg["model"]["max_length"], cfg["model"]["resp_max"])
+
+
+def test_make_eval_loader_refuses_snapshot_without_truncation(tmp_path):
+    """A pre-20 Nov G snapshot has no model.truncation (legacy encoding, removed): scoring it must fail."""
+    from scripts.score_rq1 import make_eval_loader
+    cfg = _fake_snapshot(tmp_path, None)["config"]
+    assert "truncation" not in cfg["model"]                      # guard: the case is what it claims
+    with pytest.raises(ValueError):
+        make_eval_loader(cfg["data"]["val_path"], cfg, _SpecialTokensOnly(), batch_size=2)
