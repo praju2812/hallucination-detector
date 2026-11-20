@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -21,12 +22,14 @@ from src.encoding import INPUT_FORMAT, Collator, build_tokenizer
 from utils.io import read_jsonl
 
 REPO = Path(__file__).resolve().parent.parent.parent
-OUT_DIR = REPO / "results" / "analysis_2026-11-11"
+# The 11 Nov analysis output is a dated record: nothing may write into it again. New runs write to
+# results/analysis_<today> (default_out_dir) or to an --out-dir given on the command line.
+FROZEN_OUT_DIR = REPO / "results" / "analysis_2026-11-11"
 UNIFIED_V2 = REPO / "data" / "unified_v2"
 RAGTRUTH_RAW = REPO / "data" / "raw" / "RAGTruth" / "dataset"
 SPLITS = ("train", "val", "test")
 EXPECTED_ROWS = {"train": 25008, "val": 2784, "test": 3800}
-RUNS_GLOB = str(REPO.parent / "hd-phase2" / "runs" / "run_seed*" / "predictions.jsonl")
+RUNS_GLOB = str(REPO / "runs" / "run_seed*" / "predictions.jsonl")  # G run folders (Phase 2 layout)
 N_BOOT = 2000
 BOOT_SEED = 0
 BUILD_CLINICAL_SHA = "ef2537212375d5cdc87f7e0c88c11a70961702fd"  # commit whose scripts/build_clinical.py the clinical analysis imports
@@ -98,7 +101,7 @@ def full_lengths(tok, rows: list[dict], batch: int = 512) -> dict[str, np.ndarra
     total = special tokens (pair) + first segment + response, where
         first segment = tokenizer(INPUT_FORMAT.format(query=q, context=c), add_special_tokens=False)
         response      = tokenizer(answer, add_special_tokens=False)
-    Also returns the query-part and response lengths (the response is cut at resp_max by the encoder).
+    Also returns the query-part and response lengths (on overflow the encoder protects the response to resp_max).
     """
     n_special = tok.num_special_tokens_to_add(pair=True)
     first_texts = [INPUT_FORMAT.format(query=r["query"], context=r["context"]) for r in rows]
@@ -120,7 +123,7 @@ def full_lengths(tok, rows: list[dict], batch: int = 512) -> dict[str, np.ndarra
 def self_check_lengths(tok, rows: list[dict], totals: np.ndarray, n: int = 200, seed: int = 0) -> int:
     """Assert full_lengths matches the real encoder with a window too large to truncate. Returns rows checked."""
     big = 10 ** 6
-    coll = Collator(tok, big, big - 10)
+    coll = Collator(tok, big, big - 10, "fit_first")  # nothing is cut at this window
     idx = np.random.default_rng(seed).choice(len(rows), size=min(n, len(rows)), replace=False)
     for i in idx:
         r = rows[i]
@@ -180,9 +183,27 @@ def md_table(headers: list[str], rows: list[list]) -> str:
     return "\n".join(lines)
 
 
-def write_json(obj, name: str) -> Path:
-    os.makedirs(OUT_DIR, exist_ok=True)
-    path = OUT_DIR / name
+def default_out_dir() -> Path:
+    """results/analysis_<today's date, YYYY-MM-DD>."""
+    return REPO / "results" / f"analysis_{date.today().isoformat()}"
+
+
+def check_out_dir(out_dir: str | Path | None = None) -> Path:
+    """The output folder to use (default_out_dir() when None), as an absolute path.
+    Raises ValueError if it is FROZEN_OUT_DIR or inside it."""
+    out = Path(out_dir) if out_dir is not None else default_out_dir()
+    out = (out if out.is_absolute() else Path.cwd() / out).resolve()
+    frozen = FROZEN_OUT_DIR.resolve()
+    if out == frozen or frozen in out.parents:
+        raise ValueError(f"{out} is the dated 11 Nov analysis record; write to another folder (--out-dir)")
+    return out
+
+
+def write_json(obj, name: str, out_dir: str | Path | None = None) -> Path:
+    """Write obj as JSON to <out_dir>/<name> (out_dir checked by check_out_dir)."""
+    out = check_out_dir(out_dir)
+    os.makedirs(out, exist_ok=True)
+    path = out / name
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=1, ensure_ascii=False, default=_np_default)
     return path

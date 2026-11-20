@@ -36,7 +36,7 @@ def tok():
 
 @pytest.fixture(scope="module")
 def coll(tok):
-    return Collator(tok, MAX_LEN, RESP_MAX)
+    return Collator(tok, MAX_LEN, RESP_MAX, "fit_first")
 
 
 # ------------------------------- helpers -------------------------------
@@ -91,6 +91,7 @@ def test_signature_takes_query():
     ("Summarize the following news", "Water boils at 100 degrees Celsius at sea level.",
      "Water boils at 50 degrees."),
     ("Qu'est-ce que c'est ?", "Café, naïve, 25°C, 3.14", "It's 25°C."),
+    (QUERY, words("ctx", 300), words("resp", 120)),               # 853 tokens: long, but fits
 ])
 def test_short_input_parity_with_tokenizer_pair_encoding(tok, coll, query, context, response):
     """Reference: tokenizer(INPUT_FORMAT.format(query=q, context=c), response)["input_ids"],
@@ -136,17 +137,6 @@ def test_long_response_protected_to_resp_max(tok, coll):
     assert is_prefix(first, ref_first(tok, QUERY, context))
 
 
-def test_long_response_short_context_keeps_whole_context(tok, coll):
-    """Reference: ref_first and ref_resp as above. Context fits, so the first segment is
-    ref_first in full; the response is still capped at RESP_MAX."""
-    context = "the cat sat on the mat"
-    response = words("resp", 1000)
-    out = coll.encode_with_response_budget(QUERY, context, response)
-    first, resp = split_output(tok, out)
-    assert first == ref_first(tok, QUERY, context)
-    assert resp == ids(tok, response)[:RESP_MAX]
-
-
 def test_short_response_kept_whole_and_context_fills_rest(tok, coll):
     """Reference: ref_first and ref_resp as above. A short response is kept whole;
     only the context is cut, and the window is filled to MAX_LEN."""
@@ -161,28 +151,9 @@ def test_short_response_kept_whole_and_context_fills_rest(tok, coll):
     assert is_prefix(first, ref_first(tok, QUERY, context))
 
 
-# Overflow tests: small window, query head + long response cannot both fit
-def test_overflow_response_gives_way_context_gets_zero(tok):
-    """Small window (64, resp_max 40). Query head ~30 tokens + 200-token response cannot both
-    fit at resp_max. Priority query > response > context: query intact, context gets 0 tokens
-    (no 'zebra' in the first segment), response is a prefix of ref_resp cut BELOW resp_max,
-    window filled to 64."""
-    coll = Collator(tok, 64, 40)
-    query = words("q", 15)
-    context = "zebra " * 50
-    response = words("resp", 200)
-    out = coll.encode_with_response_budget(query, context, response)
-    first, resp = split_output(tok, out)
-    assert len(out) == 64
-    assert tok.decode(first).startswith(f"Question: {query} Context:")
-    assert "zebra" not in tok.decode(first)
-    assert is_prefix(resp, ids(tok, response))
-    assert 0 < len(resp) < 40
-
-
 def test_query_alone_too_long_raises(tok):
     """If the query head alone exceeds the budget, nothing valid can be built: ValueError."""
-    coll = Collator(tok, 64, 40)
+    coll = Collator(tok, 64, 40, "fit_first")
     with pytest.raises(ValueError):
         coll.encode_with_response_budget(words("q", 200), "some context", "an answer")
 
@@ -192,11 +163,11 @@ def test_collator_rejects_resp_max_not_below_budget(tok):
     """resp_max must be < max_length - special tokens, or the response could eat the window.
     test_config.yaml used 256/384 before Phase 1."""
     with pytest.raises(ValueError):
-        Collator(tok, 256, 384)
+        Collator(tok, 256, 384, "fit_first")
     n_special = tok.num_special_tokens_to_add(pair=True)
     with pytest.raises(ValueError):
-        Collator(tok, 256, 256 - n_special)
-    Collator(tok, 256, 128)  # test_config.yaml values: must not raise
+        Collator(tok, 256, 256 - n_special, "fit_first")
+    Collator(tok, 256, 128, "fit_first")  # test_config.yaml values: must not raise
 
 
 
@@ -219,3 +190,108 @@ def test_call_passes_query_and_pads(tok, coll):
                     "a dog barked")["input_ids"]
     n0 = int(enc["attention_mask"][0].sum())
     assert enc["input_ids"][0, :n0].tolist() == expected0
+
+
+# =============================== fit_first (20 Nov 2026) ===============================
+# "Trim only on overflow": available = max_length - special - query part (query never cut).
+#   fits (context + response <= available): nothing cut.
+#   overflow: response keeps min(len, max(resp_max, available - len(context))); context gets the rest.
+#   either part ending with 0 tokens: ValueError.
+
+from src.encoding import TRUNCATION_MODES, fit_first_lengths, truncation_mode
+
+
+# ---- the counts alone (no tokenizer) ----
+@pytest.mark.parametrize("n_ctx,n_resp,available,resp_max,expected", [
+    (300, 200, 1000, 384, (300, 200)),     # fits, response under resp_max
+    (300, 600, 1000, 384, (300, 600)),     # fits, response OVER resp_max: still uncut
+    (400, 600, 1000, 384, (400, 600)),     # exactly fills available: fits
+    (5000, 1000, 1000, 384, (616, 384)),   # long context: response protected to resp_max
+    (5000, 50, 1000, 384, (950, 50)),      # long context, short response: response whole
+    (100, 2000, 1000, 384, (100, 900)),    # spare room: short context kept whole, response gets 900 > resp_max
+    (500, 2000, 1000, 384, (500, 500)),    # spare room smaller: response 500 (> resp_max), context whole
+    (700, 2000, 1000, 384, (616, 384)),    # available - context = 300 < resp_max: back to resp_max
+])
+def test_fit_first_lengths_cases(n_ctx, n_resp, available, resp_max, expected):
+    assert fit_first_lengths(n_ctx, n_resp, available, resp_max) == expected
+
+
+def test_fit_first_lengths_invariants():
+    """Over a grid: never more than each part has, never more than available, window filled whenever cut."""
+    for n_ctx in (1, 10, 383, 384, 385, 615, 616, 617, 999, 3000):
+        for n_resp in (1, 10, 383, 384, 385, 616, 999, 1000, 3000):
+            kc, kr = fit_first_lengths(n_ctx, n_resp, 1000, 384)
+            assert 0 < kc <= n_ctx and 0 < kr <= n_resp
+            assert kc + kr <= 1000
+            if (kc, kr) != (n_ctx, n_resp):
+                assert kc + kr == 1000
+            if n_ctx + n_resp > 1000 and 1000 - n_ctx <= 384:    # long context: response protected to resp_max
+                assert kr == min(n_resp, 384)
+
+
+@pytest.mark.parametrize("n_ctx,n_resp,available,resp_max", [
+    (0, 50, 1000, 384),       # empty context
+    (300, 0, 1000, 384),      # empty response, even though the row fits
+    (500, 2000, 384, 384),    # long query: resp_max == available, context would get 0
+    (500, 2000, 300, 384),    # resp_max > available: context would go below 0
+])
+def test_fit_first_lengths_zero_raises(n_ctx, n_resp, available, resp_max):
+    with pytest.raises(ValueError):
+        fit_first_lengths(n_ctx, n_resp, available, resp_max)
+
+
+def test_collator_requires_a_known_truncation_mode(tok):
+    """No default, and fit_first is the only mode: the removed legacy rule is refused by name."""
+    with pytest.raises(TypeError):
+        Collator(tok, MAX_LEN, RESP_MAX)
+    assert TRUNCATION_MODES == ("fit_first",)
+    for bad in ("legacy", "fit"):
+        with pytest.raises(ValueError):
+            Collator(tok, MAX_LEN, RESP_MAX, truncation=bad)
+
+
+def test_truncation_mode_from_config():
+    assert truncation_mode({"truncation": "fit_first"}) == "fit_first"
+    for bad in ({"max_length": 1024},          # no key: a config or snapshot from before 20 Nov 2026 (legacy)
+                {"truncation": "legacy"}, {"truncation": "FIT_FIRST"}):
+        with pytest.raises(ValueError):
+            truncation_mode(bad)
+    assert truncation_mode(BASE["model"]) == "fit_first"       # base.yaml default
+
+
+def test_fit_first_row_that_fits_is_uncut(tok, coll):
+    """Short context + a response longer than resp_max, total under the window: the tokenizer's own pair
+    encoding, response whole."""
+    context = "the cat sat on the mat"
+    response = words("resp", 250)
+    assert len(ids(tok, response)) > RESP_MAX                      # guard: the case is what it claims
+    expected = tok(INPUT_FORMAT.format(query=QUERY, context=context), response)["input_ids"]
+    assert len(expected) <= MAX_LEN
+    assert coll.encode_with_response_budget(QUERY, context, response) == expected
+
+
+def test_fit_first_spare_room_keeps_more_than_resp_max(tok, coll):
+    """Short context, 2,000-word response: the context is kept whole and the response takes the rest of the
+    window, more than resp_max."""
+    context = "the cat sat on the mat"
+    response = words("resp", 2000)
+    out = coll.encode_with_response_budget(QUERY, context, response)
+    first, resp = split_output(tok, out)
+    assert len(out) == MAX_LEN
+    assert first == ref_first(tok, QUERY, context)
+    assert len(resp) > RESP_MAX
+    assert resp == ids(tok, response)[:len(resp)]
+
+
+def test_fit_first_context_zero_raises(tok):
+    """Small window (64, resp_max 40), 15-word query: the query part leaves less than resp_max, so the
+    context would end with 0 tokens."""
+    coll = Collator(tok, 64, 40, truncation="fit_first")
+    with pytest.raises(ValueError):
+        coll.encode_with_response_budget(words("q", 15), "zebra " * 50, words("resp", 200))
+
+
+def test_fit_first_response_zero_raises(tok, coll):
+    """An empty response leaves the response segment with 0 tokens."""
+    with pytest.raises(ValueError):
+        coll.encode_with_response_budget(QUERY, "the cat sat on the mat", "")

@@ -4,7 +4,7 @@ Run (after scripts/score_rq1.py for every seed):
     python -m scripts.report_rq1
 
 Reads, per seed:
-    results/rq1/<run>/predictions.jsonl, scoring.json   (scripts/score_rq1.py)
+    results/rq1/<run>/predictions.jsonl, scoring.json   (scripts/score_rq1.py; scoring.json must record "truncation")
     runs/<run>/metrics.json                              (Phase 2: threshold (a) and RAGTruth test metrics)
     data/clinical/test.jsonl                             (clean test rows; their predictions come from test_full)
 Writes, per seed:
@@ -99,6 +99,13 @@ def boot_metric_fns(thr_a: float, thr_b: float) -> dict:
     }
 
 
+def scoring_truncation(scoring: dict, run: str) -> str:
+    """The run's truncation mode, as score_rq1 recorded it from the run snapshot; refuses older scoring.json files."""
+    if not scoring.get("truncation"):
+        raise ValueError(f"{run}: scoring.json has no 'truncation' (scored before it was recorded); re-run score_rq1")
+    return scoring["truncation"]
+
+
 def compute_seed_metrics(seed_data: dict, clean_rows: list[dict], n_boot: int = 2000, boot_seed: int = 0) -> dict:
     preds = seed_data["preds"]
     phase2 = seed_data["phase2"]
@@ -111,6 +118,7 @@ def compute_seed_metrics(seed_data: dict, clean_rows: list[dict], n_boot: int = 
     out = {
         "seed": seed_data["scoring"]["seed"],
         "experiment": seed_data["scoring"]["experiment"],
+        "truncation": scoring_truncation(seed_data["scoring"], seed_data["run"]),
         "run": seed_data["run"],
         "thresholds": {"ragtruth_val": thr_a, "clinical_val": thr_b},
         "ragtruth_test": phase2["per_source"]["ragtruth"],
@@ -146,6 +154,7 @@ def build_m3_summary(metrics: dict) -> dict:
     return {
         "seed": metrics["seed"],
         "experiment": metrics["experiment"],
+        "truncation": metrics["truncation"],
         "run": metrics["run"],
         "test": slim(metrics["test_full"]),
         "test_clean": slim(metrics["test_clean"]),
@@ -210,16 +219,16 @@ def _thr(t: float) -> str:
 
 
 def runs_table(all_m: list[dict]) -> list[str]:
-    lines = ["| run folder | seed | scoring git sha | dirty | checkpoint | device | precision | thr (a) | "
+    lines = ["| run folder | seed | truncation | scoring git sha | dirty | checkpoint | device | precision | thr (a) | "
              "thr (b) PubMedQA | thr (b) CovidQA (pooled) | thr (b) MedHallu | parity max / mean abs diff | "
              "parity AUROC Phase 2 / MPS | parity crossings |",
-             "|" + "---|" * 14]
+             "|" + "---|" * 15]
     for m in all_m:
         sc, tb = m["scoring"], m["thresholds"]["clinical_val"]
         par = sc.get("parity") or {}
         prec = sc.get("precision") or {}
         lines.append(
-            f"| {m['run']} | {m['seed']} | {sc['git_sha']} | {sc['git_dirty']} | {sc['checkpoint']} | "
+            f"| {m['run']} | {m['seed']} | {m['truncation']} | {sc['git_sha']} | {sc['git_dirty']} | {sc['checkpoint']} | "
             f"{sc['device']} ({sc['device_name']}) | {prec.get('logits_dtype')}, autocast={prec.get('autocast')} | "
             f"{_thr(m['thresholds']['ragtruth_val'])} | "
             + " | ".join(_thr(tb[s]['threshold']) for s in SOURCES)
@@ -361,9 +370,13 @@ def main(argv=None) -> int:
         print(f"no {args.rq1_root}/run_seed*/predictions.jsonl found", file=sys.stderr)
         return 1
     clean_rows = read_jsonl(os.path.join(args.data_dir, "test.jsonl"))
+    seeds = [load_seed(run, args.rq1_root, args.runs_root, args.allow_partial) for run in runs]
+    modes = {sd["run"]: scoring_truncation(sd["scoring"], sd["run"]) for sd in seeds}
+    if len(set(modes.values())) > 1:
+        raise ValueError(f"seeds were scored with different truncation modes: {modes}")
     all_m = []
-    for run in runs:
-        sd = load_seed(run, args.rq1_root, args.runs_root, args.allow_partial)
+    for sd in seeds:
+        run = sd["run"]
         m = compute_seed_metrics(sd, clean_rows, args.n_boot, args.boot_seed)
         with open(os.path.join(sd["dir"], "metrics.json"), "w") as f:
             json.dump(m, f, indent=2)
