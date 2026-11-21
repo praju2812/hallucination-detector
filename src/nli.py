@@ -3,9 +3,10 @@
 A pretrained NLI model judges whether the retrieved context ENTAILS each sentence of the response.
 No training. The CLI is scripts/score_nli.py (scoring) and scripts/report_nli.py (metrics + tables).
 
-Method (decided, AE-1 §3.4 and Phase 6):
+Method:
     premise     = a window of the context (512-token model input, 128-token overlap between windows)
-    hypothesis  = one response sentence (optionally preceded by the question for QA rows: open decision)
+    sentences   = split_response_sentences, then normalize_preambles (attribution prefix, colon lines)
+    hypothesis  = one response sentence (response-only by default)
     support     = P(entailment) for one (window, sentence) pair
     row support = min over sentences of (max over windows of support)
     score       = 1 - row support  (higher = more likely hallucinated, same direction as G's prob)
@@ -14,6 +15,8 @@ Spec: tests/test_nli.py.
 """
 
 from __future__ import annotations
+
+import re
 
 import numpy as np
 
@@ -34,6 +37,30 @@ def get_segmenter():
         _SEGMENTER = pysbd.Segmenter(language="en", clean=False)
     return _SEGMENTER
 
+def merge_short_pieces(pieces: list[str]) -> list[str]:
+    """merge pieces with fewer than MIN_WORDS words into a neighbour, never drop them.
+
+    A short piece joins the end of the previous sentence; if there is none yet, it is held and put in
+    front of the next piece. If only short pieces exist, they become one sentence.
+    Input is not modified. An empty input gives an empty list.
+    """
+    sentences = []
+    held = None
+    for piece in pieces:
+        if len(piece.split()) < MIN_WORDS:
+            if sentences:
+                sentences[-1] += ' ' + piece
+            else:
+                held = (held + ' ' + piece).strip() if held else piece
+        else:
+            if held:
+                piece = held + ' ' + piece
+                held = None
+            sentences.append(piece)
+    # only short pieces existed: together they form the single sentence
+    if held:
+        sentences.append(held)
+    return sentences
 
 # ---- response -> hypotheses --------------------------------------------------------------
 
@@ -60,22 +87,111 @@ def split_response_sentences(text: str) -> tuple[list[str], bool]:
     Why merge: the row score is a MIN over sentences, so a fragment like "Yes." or "Results:", which no context
     entails on its own, would become the row's score.
     """
-    # TODO 1: strip the text; raise on empty.
-    # TODO 2: split into lines, then each line into sentence pieces with the segmenter; strip; drop per rule 2.
-    # TODO 3: if no piece is left, return the fallback.
-    # TODO 4: walk the pieces in order and merge the short ones per rule 3 (keep track of a "held" prefix).
-    # CHECK: "Yes. The drug works well." -> one sentence; "Long sentence here. OK. Another long one here." -> 2.
-    # CHECK: a line "Results:" between two long lines joins the PREVIOUS sentence, not the next.
-    # CHECK: does the segmenter return pieces with trailing spaces? (strip them)
-    raise NotImplementedError
+    # strip the text; raise on empty
+    text = text.strip() if text else None
+    if not text:
+        raise ValueError("response is empty or whitespace only")
+
+    # split into lines, then each line into sentence pieces with the segmenter; strip; drop per rule 2.
+    lines = text.split('\n')
+    pieces = []
+    for line in lines:
+        if not line:
+            continue
+        line_pieces = get_segmenter().segment(line)
+        pieces.extend(p.strip() for p in line_pieces if any(ch.isalnum() for ch in p))
+    
+    # if no piece is left, return the fallback.
+    if not pieces:
+        return [text], True
+    
+    # walk the pieces in order and merge the short ones per rule 3 (keep track of a "held" prefix)
+    return merge_short_pieces(pieces), False
+
+# Attribution prefix stripped by normalize_preambles. Matched at the start of a sentence,
+# case-insensitive; [^,]* stops at the first comma.
+ATTRIBUTION_PREFIX = re.compile(r"^based on (the )?(given |provided )?(passages|context|information)[^,]*,\s*",
+                                re.IGNORECASE)
+
+
+def normalize_preambles(sentences: list[str]) -> tuple[list[str], int, int]:
+    """Remove generator preambles from the split sentences. Same for every source.
+
+    Applied after split_response_sentences and before build_hypotheses (scripts/score_nli.py prepare_row).
+    Input:  sentences from split_response_sentences (stripped, non-empty). Not modified.
+    Output: (sentences, n_stripped, n_merged)
+        n_stripped: sentences whose ATTRIBUTION_PREFIX was removed.
+        n_merged:   colon-line merges performed (step 2). Step 3 merges are not counted.
+    Steps, in this order:
+        1. Strip: if a sentence matches ATTRIBUTION_PREFIX, keep only the remainder after the match.
+           If nothing would remain, leave the sentence unchanged and do not count it.
+        2. Colon lines: a sentence ending with ":" is merged (one space) onto the FRONT of the next sentence.
+           Consecutive colon lines chain forward into the first sentence that does not end with ":".
+           If the LAST sentence ends with ":" (after the forward merges), it is merged onto the end of the
+           previous sentence. A lone sentence is left as it is. Never drop.
+        3. Short fragments: apply split_response_sentences' MIN_WORDS rule again (merge into previous; a first
+           fragment goes in front of the next; a lone short sentence stays), since stripping can leave
+           a short remainder such as "yes.".
+    Raises ValueError if sentences is empty.
+    Invariant: the words of the output, joined, equal the words of the input minus the stripped prefixes;
+    with more than one sentence, every sentence has at least MIN_WORDS words and only the last may end with ":".
+
+    Why: the row score is a MIN over sentences. "Based on the passages, X" is judged as X; a line like
+    "Here are some ways to ...:" is never entailed on its own, so it is judged together with what it introduces.
+    """
+    # validate the input
+    if not sentences or any(not isinstance(s, str) or not s.strip() for s in sentences):
+        raise ValueError("Empty or invalid sentences to normalize")
+    sentences = list(sentences)  # work on a copy
+
+    # strip the prefix (ATTRIBUTION_PREFIX.match / .end()), counting n_stripped
+    n_stripped = 0
+    for i, s in enumerate(sentences):
+        m = ATTRIBUTION_PREFIX.match(s)
+        if m:
+            remainder = s[m.end():].strip()
+            if remainder:
+                sentences[i] = remainder
+                n_stripped += 1
+        
+    # forward pass: colon lines are carried forward onto the front of the next sentence
+    n_merged = 0
+    result = []
+    pending = None        # colon lines waiting for the sentence they introduce
+    pending_count = 0
+    for s in sentences:
+        if s.endswith(":"):
+            pending = s if pending is None else pending + " " + s
+            pending_count += 1
+        else:
+            if pending is not None:
+                s = pending + " " + s
+                n_merged += pending_count
+                pending, pending_count = None, 0
+            result.append(s)
+
+    # colon lines left at the end: chained together, then merged onto the end of the previous sentence
+    if pending is not None:
+        n_merged += pending_count - 1          # the forward chaining among them
+        if result:
+            result[-1] += " " + pending
+            n_merged += 1                      # the backward merge
+        else:
+            result.append(pending)             # only colon lines: left as one sentence
+    sentences = result
+
+    # the MIN_WORDS merge again
+    sentences = merge_short_pieces(sentences)
+
+    return sentences, n_stripped, n_merged
 
 
 def build_hypotheses(row: dict, sentences: list[str], include_question: bool) -> list[tuple[str | None, str]]:
     """One (question, sentence) pair per response sentence; question is None when it is not used.
 
     Inputs:
-        row: a data row (task, query, ...). sentences: output of split_response_sentences.
-        include_question: the --hypothesis flag (open decision, Prajakta, after the inspection step).
+        row: a data row (task, query, ...). sentences:output of normalize_preambles
+        include_question: the --hypothesis flag.
     Output: [(question or None, sentence), ...], same order and length as sentences.
     Rules:
         - the question (row["query"], stripped) is used only if include_question is True AND row["task"] == "qa".
@@ -85,11 +201,19 @@ def build_hypotheses(row: dict, sentences: list[str], include_question: bool) ->
     Why a pair, not one string: cap_hypothesis_ids must shorten the question before the sentence, so the two
     parts are tokenised separately (scripts/score_nli.py) and joined only after the cap.
     """
-    # TODO 1: validate sentences.
-    # TODO 2: decide whether this row gets the question; if yes, read and validate the query.
-    # TODO 3: build the list of pairs.
-    # CHECK: the task value in the data is lower case ("qa", "summary").
-    raise NotImplementedError
+    # validate sentences
+    if not sentences or not all(isinstance(s, str) and s.strip() for s in sentences):
+        raise ValueError("Empty or invalid sentences to build hypotheses from")
+    
+    # decide whether this row gets the question; if yes, read and validate the query.
+    question = None
+    if include_question and row.get("task") == "qa":
+        question = (row.get("query") or "").strip()
+        if not question:
+            raise ValueError("QA row needs a non-empty query for the hypothesis")
+        
+    # build the list of pairs
+    return [(question, sentence) for sentence in sentences]
 
 
 def cap_hypothesis_ids(question_ids: list[int], sentence_ids: list[int],
@@ -98,7 +222,7 @@ def cap_hypothesis_ids(question_ids: list[int], sentence_ids: list[int],
 
     Inputs: token ids WITHOUT special tokens; question_ids is [] for response-only hypotheses.
     Output: (hypothesis ids = question part + sentence part, capped) with capped True iff anything was removed.
-    Rules (decision, 19 Nov):
+    Rules:
         - fits (len(question) + len(sentence) <= max_tokens): return everything, capped False.
         - otherwise, shorten the QUESTION first, keeping the sentence whole: keep the question's first ids
           (cut from its end) so that the total is max_tokens. If no room is left, the question is dropped.
@@ -108,13 +232,17 @@ def cap_hypothesis_ids(question_ids: list[int], sentence_ids: list[int],
     Why: with max_tokens 256 the context budget is at least 512 - 256 - 3 = 253 tokens, always above the
     128-token stride, so the window logic never breaks. Only the hypothesis is ever truncated.
     """
-    # TODO 1: the no-cap case.
-    # TODO 2: the sentence fits on its own: how much room is left for the question?
-    # TODO 3: the sentence alone is too long.
-    # CHECK: exactly max_tokens in total is NOT capped.
-    # CHECK: return new lists (slicing), never the caller's lists modified in place.
-    raise NotImplementedError
-
+    # the no-cap case.
+    if len(question_ids) + len(sentence_ids) <= max_tokens:
+        return question_ids + sentence_ids, False
+    
+    # the sentence fits on its own: how much room is left for the question?
+    room_for_question = max_tokens - len(sentence_ids)
+    if room_for_question > 0:
+        return question_ids[:room_for_question] + sentence_ids, True
+    
+    # the sentence alone is too long.
+    return sentence_ids[:max_tokens], True
 
 # ---- windows over the context -------------------------------------------------------------
 
@@ -134,13 +262,29 @@ def window_spans(n_context: int, budget: int, stride: int = STRIDE) -> list[tupl
     written out so they can be tested without a model.
     Raises ValueError if n_context < 1, stride < 0, or budget <= stride (no progress would be made).
     """
-    # TODO 1: validate the arguments.
-    # TODO 2: the single-window case.
-    # TODO 3: step through the context; work out how far each new window starts after the previous one.
-    # CHECK: (10, 4, 1) -> [(0, 4), (3, 7), (6, 10)]; (11, 4, 1) adds (9, 11).
-    # CHECK: the loop stops as soon as a window reaches n_context (no extra empty or duplicate window).
-    raise NotImplementedError
+    # validate the arguments.
+    if n_context < 1:
+        raise ValueError(f"n_context must be >= 1, got {n_context}")
+    if stride < 0:
+        raise ValueError(f"stride must be >= 0, got {stride}")
+    if budget <= stride:
+        raise ValueError(f"budget must be > stride, got budget={budget}, stride={stride}")
+    
+    # the single-window case
+    if n_context <= budget:
+        return [(0, n_context)]
+    
+    # step through the context; work out how far each new window starts after the previous one.
+    windows = []
+    start = 0
+    while start < n_context:
+        end = min(start + budget, n_context)
+        windows.append((start, end))
+        if end == n_context:
+            break
+        start += budget - stride
 
+    return windows
 
 # ---- model outputs -> scores ----------------------------------------------------------------
 
@@ -151,9 +295,13 @@ def entailment_index(id2label: dict) -> int:
     Output: the int index whose label, lower-cased, is exactly "entailment" ("not_entailment" does not match).
     Raises ValueError if no label or more than one label matches.
     """
-    # TODO 1: find the matching keys.
-    # TODO 2: validate that there is exactly one; return it as an int.
-    raise NotImplementedError
+    # find the matching keys
+    matches = [int(k) for k, v in id2label.items() if str(v).lower() == "entailment"]
+    if len(matches) == 0:
+        raise ValueError("No entailment label found")
+    if len(matches) > 1:
+        raise ValueError("Multiple entailment labels found")
+    return matches[0]
 
 
 def entailment_probs(logits: np.ndarray, ent_idx: int) -> np.ndarray:
@@ -163,12 +311,20 @@ def entailment_probs(logits: np.ndarray, ent_idx: int) -> np.ndarray:
     Output: shape (n_pairs,) = softmax over the label axis, entailment column.
     Raises ValueError if logits is not 2-D.
     """
-    # TODO 1: validate the shape.
-    # TODO 2: a numerically stable softmax over the label axis.
-    # TODO 3: take the entailment column.
-    # CHECK: logits like 1000 must not give inf or nan (what do you subtract before exponentiating?).
-    raise NotImplementedError
 
+    # validate the shape.
+    if len(logits.shape) != 2:
+        raise ValueError(f"Expected 2-D logits, got {logits.shape}")
+    
+    # validate ent_idx is in range [0, n_labels).
+    if ent_idx < 0 or ent_idx >= logits.shape[1]:
+        raise ValueError(f"ent_idx {ent_idx} is out of range [0, {logits.shape[1]})")
+
+    #a numerically stable softmax over the label axis.
+    max_logits = np.max(logits, axis=1, keepdims=True)
+    exp_logits = np.exp(logits - max_logits)
+    softmax = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+    return softmax[:, ent_idx]
 
 def aggregate_support(support_by_sentence: list[list[float]]) -> float:
     """Row support from pair supports: max over windows for each sentence, then min over sentences.
@@ -179,15 +335,21 @@ def aggregate_support(support_by_sentence: list[list[float]]) -> float:
     supported sentence (min).
     Raises ValueError if there are no sentences, or a sentence has no windows.
     """
-    # TODO 1: validate.
-    # TODO 2: max per sentence, then min over sentences; return a plain float.
-    raise NotImplementedError
-
+    # validate.
+    if not support_by_sentence or any(len(s) == 0 for s in support_by_sentence):
+        raise ValueError("Empty sentences provided for support aggregation")
+    
+    # max per sentence, then min over sentences; return a plain float.
+    max_per_sentence = [max(supports) for supports in support_by_sentence]
+    return float(min(max_per_sentence))
 
 def hallucination_score(support: float) -> float:
     """Score in the same direction as G's prob: 1 - support (1 = no sentence supported at all).
 
     Returns a plain Python float. Raises ValueError if support is outside [0, 1].
     """
-    # TODO 1: validate; return the score as a plain float.
-    raise NotImplementedError
+    # validate.
+    if support < 0 or support > 1 or np.isnan(support) or np.isinf(support):
+        raise ValueError("Support must be in [0, 1]")
+    # return the score as a plain float.
+    return float(1 - support)

@@ -197,6 +197,28 @@ def test_fallback_and_capped_counts():
     assert c["rows"] == 3 and c["fallback_rows"] == 1 and c["capped_hypotheses"] == 1
 
 
+_PREAMBLE_ANSWER = ("Based on the given passages, here are the facts:\n* The patient took aspirin daily\n"
+                    "* The patient recovered well")
+
+
+def test_prepare_row_applies_preamble_step_and_counts():           # needs bodies (normalize_preambles)
+    b = PairBuilder(FakeTokenizer())
+    rows = [_row(_PREAMBLE_ANSWER, CTX), _row("Aspirin gave pain relief.", CTX, source="medhallu")]
+    prepared = [prepare_row(r, b, False, 4, 64, 16) for r in rows]
+    assert prepared[0]["sentences"] == ["here are the facts: * The patient took aspirin daily", "* The patient recovered well"]
+    assert (prepared[0]["n_stripped"], prepared[0]["n_merged"]) == (1, 1)
+    assert len(prepared[0]["hyps"]) == 2                                   # hypotheses built from the AFTER sentences
+    c = split_counts({"rows": rows}, prepared)
+    assert (c["ragbench_pubmedqa"]["stripped_prefixes"], c["ragbench_pubmedqa"]["merged_colon_lines"]) == (1, 1)
+    assert (c["medhallu"]["stripped_prefixes"], c["medhallu"]["merged_colon_lines"]) == (0, 0)
+
+
+def test_hypothesis_format_defaults_to_response():
+    from scripts.score_nli import parse_args
+    assert parse_args([]).hypothesis == "response"
+    assert parse_args(["--hypothesis", "question_response"]).hypothesis == "question_response"
+
+
 def test_determinism_check_and_records():
     b = PairBuilder(FakeTokenizer())
     rows = [_row("Aspirin gave pain relief.", CTX, gid="g1"), _row("The patient died suddenly at home.", CTX, 1, gid="g2")]
@@ -244,6 +266,94 @@ def test_preamble_stats_counts_rows_and_sentences():          # needs bodies (sp
     ps = preamble_stats(rows)
     assert ps["rows"] == 3 and ps["rows_with"] == 2 and ps["sentences"] == 6
     assert [rules for _, rules in ps["matches"]] == [["ends_with_colon", "based_on"], ["here_is"]]
+
+
+# ---- inspection: token tables (fake tokenizer; needs bodies) ------------------------------------
+
+def test_context_sentences_split_on_newlines_and_never_merged():
+    from scripts.inspect_nli_inputs import split_context_sentences
+    text = "Intro line without a full stop\n---\n\nYes. The drug works well in adults.\n  * Second bullet item here"
+    assert split_context_sentences(text) == ["Intro line without a full stop", "Yes.",
+                                             "The drug works well in adults.", "* Second bullet item here"]
+
+
+def test_context_sentence_stats_counts_distinct_contexts():
+    from scripts.inspect_nli_inputs import context_sentence_stats
+    b = PairBuilder(FakeTokenizer())
+    shared = "One two three four five. Six seven."
+    rows = [_row("a b c.", shared), _row("d e f.", shared), _row("g h i.", "Alpha beta gamma delta epsilon zeta eta.")]
+    cs = context_sentence_stats(rows, b, limit=4)
+    assert cs == {"rows": 3, "contexts": 2, "sentences": 3, "over": 2, "max": 7}   # 5, 2 (shared once) and 7 tokens
+
+
+# Word-level ids, cap 6, max_length 18, stride 2; CTX has 11 tokens, so budget = 18 - len(hyp) - 3.
+_FMT_ROWS = [
+    _row("Aspirin gave pain relief.", CTX, query="Did aspirin help the patient at all?"),  # q 7 + s 4: q shortened to 2
+    _row("x0 x1 x2 x3 x4 x5 x6 x7.", CTX),                         # q 3 + s 8: sentence cut to 6, q dropped
+    _row("Aspirin was fine.", CTX, query="Why?"),                  # q 1 + s 3: fits
+    _row("Aspirin gave pain relief.", CTX, task="summary"),        # never a question
+    _row("Aspirin gave the patient pain relief.", CTX),            # q 3 + s 6: no room left, q dropped, s whole
+]
+
+
+def test_format_stats_response_only():
+    from scripts.inspect_nli_inputs import format_stats
+    fs = format_stats(_FMT_ROWS, PairBuilder(FakeTokenizer()), False, stride=2, hyp_cap=6, max_length=18)
+    assert {k: fs[k] for k in ("hypotheses", "capped", "with_question", "q_shortened", "q_dropped",
+                               "sentence_cut", "max_before_cap")} == \
+        {"hypotheses": 5, "capped": 1, "with_question": 0, "q_shortened": 0, "q_dropped": 0,
+         "sentence_cut": 1, "max_before_cap": 8}
+    assert fs["windows"] == [1, 2, 1, 1, 2]           # hyp 4, 6, 3, 4, 6 -> budget 11, 9, 12, 11, 9 for 11 tokens
+    assert fs["pairs"] == 7
+
+
+def test_format_stats_question_response():
+    from scripts.inspect_nli_inputs import format_stats
+    fs = format_stats(_FMT_ROWS, PairBuilder(FakeTokenizer()), True, stride=2, hyp_cap=6, max_length=18)
+    assert {k: fs[k] for k in ("hypotheses", "capped", "with_question", "q_shortened", "q_dropped",
+                               "sentence_cut", "max_before_cap")} == \
+        {"hypotheses": 5, "capped": 3, "with_question": 4, "q_shortened": 1, "q_dropped": 2,
+         "sentence_cut": 1, "max_before_cap": 11}
+    assert fs["windows"] == [2, 2, 1, 1, 2]           # hyp 6, 6, 4, 4, 6
+    assert fs["pairs"] == 8
+
+
+def test_token_tables_print_without_labels(capsys):
+    from scripts.inspect_nli_inputs import print_token_tables
+    rows = [dict(r, label=None) for r in _FMT_ROWS]   # a label is never needed
+    groups = {("ragbench_pubmedqa", "qa"): [r for r in rows if r["task"] == "qa"],
+              ("ragbench_pubmedqa", "summary"): [r for r in rows if r["task"] == "summary"]}
+    print_token_tables(groups, PairBuilder(FakeTokenizer()), stride=2, hyp_cap=6)
+    out = capsys.readouterr().out
+    assert "== 1. Context sentences" in out and "== 2. Hypotheses" in out and "== 3. Windows per row" in out
+    assert "| ragbench_pubmedqa | qa | question_response |" in out
+    assert "| ragbench_pubmedqa | summary | question_response |" not in out       # summary: response only
+
+
+# ---- inspection: preamble step (needs bodies) ---------------------------------------------------
+
+def test_normalize_stats_counts_affected_rows():
+    from scripts.inspect_nli_inputs import normalize_stats
+    rows = [{"answer": _PREAMBLE_ANSWER},
+            {"answer": "The drug reduced mortality in adults. Side effects were mild overall."},
+            {"answer": "Based on the context, the drug works well in adults."}]
+    ns = normalize_stats(rows)
+    assert (ns["rows"], ns["affected"], ns["stripped"], ns["merged"]) == (3, 2, 2, 1)
+    assert ns["examples"][1] == (["Based on the context, the drug works well in adults."],
+                                 ["the drug works well in adults."])
+
+
+def test_normalize_section_prints_table_and_seeded_examples(capsys):
+    from scripts.inspect_nli_inputs import print_normalize_section
+    by_source = {"ragtruth": [{"answer": _PREAMBLE_ANSWER}, {"answer": "The drug works well in adults."}],
+                 "medhallu": [{"answer": "The drug works well in adults."}]}
+    print_normalize_section(by_source, seed=0)
+    out = capsys.readouterr().out
+    assert "| ragtruth | 2 | 1 | 50.0% | 1 | 1 |" in out and "| medhallu | 1 | 0 | 0.0% | 0 | 0 |" in out
+    assert "-- ragtruth: 1 seeded examples" in out and "-- medhallu" not in out
+    assert "'here are the facts: * The patient took aspirin daily'" in out
+    print_normalize_section(by_source, seed=0)
+    assert capsys.readouterr().out == out                                   # seeded: same output twice
 
 
 # ---- M5 summary shape (runs now) ---------------------------------------------------------------

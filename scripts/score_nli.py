@@ -1,9 +1,9 @@
 """Phase 6 (M5): score the zero-shot NLI baseline on RAGTruth and the clinical sets.
 
-Run (once the hypothesis format is decided, after scripts/inspect_nli_inputs.py):
-    python -m scripts.score_nli --hypothesis response              # or: question_response
+Run (hypothesis format: response by default, decision 21 Nov):
+    python -m scripts.score_nli                                    # or: --hypothesis question_response
 Smoke (first 100 rows of each split; never reported):
-    python -m scripts.score_nli --hypothesis response --limit 100 --out-root results/nli_smoke
+    python -m scripts.score_nli --limit 100 --out-root results/nli_smoke
 
 Scores four splits once: RAGTruth val and test (data/unified_v2, RAGTruth rows only), clinical val and
 test_full (data/clinical). Clean clinical test is not scored: scripts/report_nli.py derives it from
@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from src.nli import (
+    ATTRIBUTION_PREFIX,
     HYP_CAP,
     MAX_LENGTH,
     MIN_WORDS,
@@ -36,6 +37,7 @@ from src.nli import (
     entailment_index,
     entailment_probs,
     hallucination_score,
+    normalize_preambles,
     split_response_sentences,
     window_spans,
 )
@@ -135,10 +137,12 @@ def prepare_row(row: dict, builder: PairBuilder, include_question: bool, stride:
                 hyp_cap: int) -> dict:
     """Sentences, capped hypothesis ids and context windows for one row. No model call.
 
+    Sentences = split_response_sentences, then normalize_preambles (n_stripped / n_merged are its counts).
     Pair inputs are not stored (62k pairs x ~400 ids would be ~1 GB of Python ints): they are built per batch
     from "ctx", "hyps" and "spans" (pair_inputs).
     """
     sentences, fell_back = split_response_sentences(row["answer"])
+    sentences, n_stripped, n_merged = normalize_preambles(sentences)
     hyps = build_hypotheses(row, sentences, include_question)
     ctx = builder.ids(row["context"])
     q_cache: dict[str, list[int]] = {}
@@ -150,8 +154,8 @@ def prepare_row(row: dict, builder: PairBuilder, include_question: bool, stride:
         budget = max_length - len(hyp_ids) - builder.n_special
         hyp_ids_list.append(hyp_ids)
         spans_list.append(window_spans(len(ctx), budget, stride))
-    return {"sentences": sentences, "fell_back": fell_back, "n_capped": n_capped, "ctx": ctx,
-            "hyps": hyp_ids_list, "spans": spans_list}
+    return {"sentences": sentences, "fell_back": fell_back, "n_capped": n_capped, "n_stripped": n_stripped,
+            "n_merged": n_merged, "ctx": ctx, "hyps": hyp_ids_list, "spans": spans_list}
 
 
 def n_pairs(p: dict) -> int:
@@ -248,7 +252,8 @@ def make_records(split: dict, results: list[dict]) -> list[dict]:
 
 
 def split_counts(split: dict, prepared: list[dict]) -> dict:
-    out = defaultdict(lambda: {"rows": 0, "sentences": 0, "pairs": 0, "fallback_rows": 0, "capped_hypotheses": 0})
+    out = defaultdict(lambda: {"rows": 0, "sentences": 0, "pairs": 0, "fallback_rows": 0, "capped_hypotheses": 0,
+                               "stripped_prefixes": 0, "merged_colon_lines": 0})
     for row, p in zip(split["rows"], prepared):
         c = out[row["source"]]
         c["rows"] += 1
@@ -256,6 +261,8 @@ def split_counts(split: dict, prepared: list[dict]) -> dict:
         c["pairs"] += n_pairs(p)
         c["fallback_rows"] += int(p["fell_back"])
         c["capped_hypotheses"] += p["n_capped"]
+        c["stripped_prefixes"] += p["n_stripped"]
+        c["merged_colon_lines"] += p["n_merged"]
     return dict(out)
 
 
@@ -263,8 +270,8 @@ def split_counts(split: dict, prepared: list[dict]) -> dict:
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--hypothesis", required=True, choices=sorted(HYPOTHESIS_FORMATS),
-                    help="open decision (Prajakta): response only, or question + response for QA rows")
+    ap.add_argument("--hypothesis", default="response", choices=sorted(HYPOTHESIS_FORMATS),
+                    help="response only (default, decision 21 Nov), or question + response for QA rows")
     ap.add_argument("--model", default=MODEL_ID)
     ap.add_argument("--revision", default=None, help="HF revision; default: the cached/latest main")
     ap.add_argument("--splits", default=",".join(SPLITS))
@@ -365,6 +372,9 @@ def main(argv=None) -> int:
         "hyp_cap": args.hyp_cap,
         "min_words": MIN_WORDS,
         "splitter": {"name": "pysbd", "version": importlib.metadata.version("pysbd"), "newline_split_first": True},
+        "preambles": {"attribution_prefix": ATTRIBUTION_PREFIX.pattern, "flags": "IGNORECASE",
+                      "colon_lines": "merged into the next sentence (the previous one if last)",
+                      "counts": "counts[split][source].stripped_prefixes / merged_colon_lines"},
         "pair_layout": pair_layout,
         "aggregation": "score = 1 - min over sentences of max over windows of P(entailment)",
         "device": device,

@@ -14,8 +14,10 @@ from src.nli import (
     entailment_index,
     entailment_probs,
     hallucination_score,
+    normalize_preambles,
     split_response_sentences,
     window_spans,
+    ATTRIBUTION_PREFIX,
 )
 
 
@@ -111,6 +113,107 @@ def test_empty_response_raises():
     for t in ["", "   \n  "]:
         with pytest.raises(ValueError):
             split_response_sentences(t)
+
+
+# ---- normalize_preambles ----------------------------------------------------------------
+
+def test_preamble_prefix_stripped_claim_kept():
+    s = ["Based on the given passages, the drug reduced mortality in adults.", "Side effects were mild overall."]
+    assert normalize_preambles(s) == (["the drug reduced mortality in adults.", "Side effects were mild overall."], 1, 0)
+
+
+def test_preamble_prefix_variants_case_insensitive_up_to_first_comma():
+    assert normalize_preambles(["BASED ON CONTEXT given above, aspirin lowers the risk."]) == \
+        (["aspirin lowers the risk."], 1, 0)
+    assert normalize_preambles(["Based on the information provided in the passages, aspirin lowers the risk."]) == \
+        (["aspirin lowers the risk."], 1, 0)
+    assert normalize_preambles(["based on provided passages,   aspirin lowers the risk, mostly."]) == \
+        (["aspirin lowers the risk, mostly."], 1, 0)                 # [^,]* stops at the FIRST comma
+
+
+def test_preamble_prefix_not_matched_is_left_alone():
+    s = ["Based on the context the drug works well.",                # no comma
+         "The answer, based on the context, is yes overall.",        # not at the start
+         "Based on these passages, the drug works well."]            # "these" is not in the pattern
+    assert normalize_preambles(s) == (s, 0, 0)
+
+
+def test_preamble_prefix_only_sentence_is_kept_unchanged():
+    # Nothing would remain after stripping (none in validation, 21 Nov): the sentence stays as it is, not counted.
+    s = ["Based on the given passages,", "The drug reduced mortality in adults."]
+    assert normalize_preambles(s) == (s, 0, 0)
+
+
+def test_preamble_colon_line_merged_forward():
+    s = ["Here are the main symptoms:", "* Diarrhea that is often violent", "* Abdominal pain after eating"]
+    assert normalize_preambles(s) == \
+        (["Here are the main symptoms: * Diarrhea that is often violent", "* Abdominal pain after eating"], 0, 1)
+
+
+def test_preamble_colon_line_last_merges_backward():
+    s = ["The trial enrolled 300 adults in total.", "The main results were as follows:"]
+    assert normalize_preambles(s) == (["The trial enrolled 300 adults in total. The main results were as follows:"], 0, 1)
+
+
+def test_preamble_remainder_ending_with_colon_is_merged():
+    s = ["Based on the given passages, here is the answer:", "* The drug reduced mortality in adults."]
+    assert normalize_preambles(s) == (["here is the answer: * The drug reduced mortality in adults."], 1, 1)
+
+
+def test_preamble_consecutive_colon_lines_chain_forward():
+    s = ["The findings are listed below:", "First the main outcome measures:", "* Mortality fell by a third overall."]
+    assert normalize_preambles(s) == \
+        (["The findings are listed below: First the main outcome measures: * Mortality fell by a third overall."], 0, 2)
+
+
+def test_preamble_colon_chain_at_the_end_merges_backward():
+    s = ["The trial enrolled 300 adults.", "Results were as follows:", "Details are listed below:"]
+    assert normalize_preambles(s) == \
+        (["The trial enrolled 300 adults. Results were as follows: Details are listed below:"], 0, 2)
+
+
+def test_preamble_lone_colon_sentence_kept():
+    assert normalize_preambles(["The results are as follows:"]) == (["The results are as follows:"], 0, 0)
+
+
+def test_preamble_colon_inside_a_sentence_is_not_a_colon_line():
+    s = ["Note: the drug works well here.", "Side effects were mild overall."]
+    assert normalize_preambles(s) == (s, 0, 0)
+
+
+def test_preamble_short_remainder_merged_again():
+    s = ["The drug reduced mortality in adults.", "Based on the context, yes."]
+    assert normalize_preambles(s) == (["The drug reduced mortality in adults. yes."], 1, 0)       # into previous
+    s = ["Based on the passages, yes.", "The drug reduced mortality in adults."]
+    assert normalize_preambles(s) == (["yes. The drug reduced mortality in adults."], 1, 0)       # first: into next
+    assert normalize_preambles(["Based on the context, yes."]) == (["yes."], 1, 0)               # lone: kept
+
+
+def test_preamble_nothing_is_ever_lost():
+    cases = [
+        ["Based on the provided passages, here are some ways to get rid of a smell:", "* Open the windows wide",
+         "* Bake soda in a bowl overnight", "These steps usually help a lot:"],
+        ["Based on the context provided, yes.", "Summary of the findings:", "Mortality fell by a third."],
+        ["The trial enrolled 300 adults.", "It worked well.", "Side effects were mild overall."],
+    ]
+    for s in cases:
+        out, n_stripped, _ = normalize_preambles(list(s))
+        expected = " ".join(ATTRIBUTION_PREFIX.sub("", x, count=1) for x in s).split()
+        assert " ".join(out).split() == expected                    # every word kept, in order, minus the prefixes
+        assert n_stripped == sum(bool(ATTRIBUTION_PREFIX.match(x)) for x in s)
+        assert all(x == x.strip() and x for x in out)
+        if len(out) > 1:
+            assert all(len(x.split()) >= 3 for x in out)             # MIN_WORDS invariant holds again
+            assert not any(x.endswith(":") for x in out[:-1])        # only the last may end with ":" (merged back)
+
+
+def test_preamble_does_not_modify_input_and_rejects_empty():
+    s = ["Based on the context, the drug works well.", "Results were as follows:", "Mortality fell by a third."]
+    before = list(s)
+    normalize_preambles(s)
+    assert s == before
+    with pytest.raises(ValueError):
+        normalize_preambles([])
 
 
 # ---- cap_hypothesis_ids ----------------------------------------------------------------
