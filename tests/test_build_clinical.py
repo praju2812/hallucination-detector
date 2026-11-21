@@ -1,11 +1,11 @@
 """Spec for scripts/build_clinical.py (Phase 3, M2).
 
-Decisions (Prajakta, 9 Nov; see the plan):
+Decisions:
   D3  group_id = sha1 of the normalised question (lowercase, collapse whitespace, strip), no source prefix.
   D4  cross-dataset overlap = normalised question OR any shared passage (sha1 of normalised passage text).
       A passage gets a key only if its normalised text has >= min_words words (default 8; 0 keeps every
       non-empty passage), so boilerplate such as "None." is not overlap. build() and the audit use the default.
-  Removal rule (supervisor, 10-11 Nov; CLAUDE.md rule 6, replaces D2/D4/D5/D9 training-side drops):
+  Removal rule :
       training data (clinical train + general train) is never reduced; val and test GROUPS with a row sharing a
       question or an 8+ word passage with it are removed and returned separately (removed_by says why);
       the full test set is kept as test_full; val x test passage sharing is reported only, question sharing must be 0.
@@ -299,7 +299,7 @@ def test_split_artificial_preserves_row_order():
 
 
 def test_split_artificial_independent_of_pythonhashseed():
-    """Hard rule 3: hashlib.sha1, never hash(). Same result under two PYTHONHASHSEED values."""
+    """hashlib.sha1, never hash(). Same result under two PYTHONHASHSEED values."""
     code = (
         "from scripts.build_clinical import medhallu_rows, split_pqa_artificial\n"
         "rows = medhallu_rows([{'Question': f'Q{i}?', 'Knowledge': ['k'], 'Ground Truth': 'g',"
@@ -495,7 +495,7 @@ def test_handcheck_too_few_raises():
 
 
 # ---------------------------------------------------------------- build() end to end on toy data
-# Rule (supervisor, 10-11 Nov; CLAUDE.md rule 6): training is never reduced. Val and test rows sharing a question or
+# Rule: training is never reduced. Val and test rows sharing a question or
 # an 8+ word passage with the training data (clinical train + general train) are removed, whole groups at a time.
 SHARED_RB, SHARED_G, MH_TEST_K, MH_D5_K, MH_VT_K, VAL_ONLY, RB_VAL_P, GENERAL_P, GENERAL_V = (
     long_p(t) for t in ("SHARED-RB", "SHARED-G", "MH-TEST-K", "MH-D5-K", "MH-VT-K", "VAL-ONLY", "RB-VAL-P",

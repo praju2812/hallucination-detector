@@ -3,7 +3,7 @@
 Rule: a clinical test row is removed if it shares its question, or any passage, with the training data:
     clinical train BEFORE any training-side removal (RAGBench PubMedQA train, RAGBench CovidQA train,
     pqa_artificial's 90/10 train portion) + data/unified_v2/train.jsonl.
-Keys come from Prajakta's overlap_keys(row, min_words) in scripts/build_clinical.py (pinned to BUILD_CLINICAL_SHA).
+Keys come from overlap_keys(row, min_words) in scripts/build_clinical.py (pinned to BUILD_CLINICAL_SHA).
 Variants: min_words=0 (every non-empty passage) and min_words=8 (the build default).
 RAGTruth Summary rows are left out of QUESTION comparisons (their query is the constant "Summarize the following news").
 
@@ -136,7 +136,7 @@ def main() -> None:
                 pc.pop("_removed_mask")
                 res["by_part"][src][part] = {k: pc[k] for k in ("removed", "q_only", "p_only", "both")}
 
-        # D4 / D5 under the test-side rule (the training side is the protected one)
+        # the training side is the protected one
         idx_art_val = KeyIndex(bc, clin["val"][bc.MEDHALLU], mw)
         cases = {
             "D4a: MedHallu test x RAGBench PubMedQA train (remove from test)":

@@ -24,7 +24,7 @@ min_words words (default 8, used everywhere in build() and the audit), so boiler
 are not counted as overlap. RAGTruth Summary rows give no question key (their query is the constant
 "Summarize the following news"); see training_keys.
 
-Rule (supervisor decision, 10-11 Nov; CLAUDE.md hard rule 6): training data is never reduced for overlap.
+Rule: training data is never reduced for overlap.
 Steps, in the order build() applies them:
     -  drop unlabelled rows only where expected (RAGBench PubMedQA validation: 1); a test row never
     -  contexts joined in RAGTruth QA style: "passage 1:{p1}\\n\\npassage 2:{p2}"
@@ -34,7 +34,7 @@ Steps, in the order build() applies them:
                        + data/unified_v2/train.jsonl
     -  validation and test: every GROUP with a row sharing a question or an 8+ word passage with the training data
        is removed (drop_overlap) and saved to removed_{split}.jsonl; the full test set is kept as test_full
-    -  val x test passage sharing is reported only (no row removed); val x test question sharing must be 0 (rule 2)
+    -  val x test passage sharing is reported only (no row removed); val x test question sharing must be 0
 
 Needs `datasets` (requirements-data.txt, local only). Training never does: it reads the JSONL files.
 Run:  python -m scripts.build_clinical --out-dir data/clinical
@@ -555,7 +555,7 @@ def overlap_audit(splits: dict, general_train: list[dict] | None = None, general
     Asserted (must be 0), per source:
         val x clinical train, val x general train          (any key)
         test (clean) x clinical train, x general train     (any key)
-        val x test and val x test_full                     (question; CLAUDE.md rule 2, groups)
+        val x test and val x test_full                     (question; groups)
     Reported only:
         test_full x clinical / general train               (any key; = the removed test rows)
         val x test and val x test_full                     (passage)

@@ -1,4 +1,4 @@
-"""config_snapshot.json contents (hard rule 8, plumbing).
+"""config_snapshot.json contents (plumbing).
 
 Run: python -m pytest tests/test_train_snapshot.py
 """

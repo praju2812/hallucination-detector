@@ -212,7 +212,7 @@ def test_check_against_v1_fails_on_missing_split(v1_dir):
 @pytest.mark.parametrize("path", ["data/unified", "data/unified/", "./data/unified",
                                   "data/unified/sub", "data/raw", "data/raw/RAGTruth"])
 def test_refuse_protected_out_dir(path):
-    """Hard rule 1: never write into data/unified/ or data/raw/."""
+    """never write into data/unified/ or data/raw/."""
     with pytest.raises(ValueError):
         refuse_protected_out_dir(path)
 

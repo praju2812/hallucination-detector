@@ -1,12 +1,12 @@
 """Spec for scripts/summarize_runs.py (Phase 2).
 
-Templates (Prajakta writes the bodies):
+Functions:
   summarize_source(runs, source)              -> per-source mean / sample std / min / max across seeds, prevalence
   peak_epoch(val_history, select_on)          -> epoch with the best validation metric
   truncation_split_metrics(preds, flags, thr) -> RAGTruth test metrics for truncated vs untruncated rows
-Plumbing (Claude Code): load_runs, filter_runs, format_report.
+Plumbing: load_runs, filter_runs, format_report.
 
-Decisions used (9 Nov): D5 spread = sample std (n-1) plus min and max.
+Decisions used: D5 spread = sample std (n-1) plus min and max.
 
 Run: python -m pytest tests/test_summarize_runs.py
 """

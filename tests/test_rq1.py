@@ -1,18 +1,18 @@
 """Spec for Phase 4 (RQ1: G zero-shot on clinical data).
 
-Templates (Prajakta writes the bodies, in src/rq1.py):
-  check_g_snapshot(snapshot)                       -> raises if the run is not a reportable G run in the current format
-  load_g_checkpoint(run_dir, device, build_model)  -> (model in eval mode, snapshot)
-  assign_row_keys(rows)                            -> stable per-row key, duplicates numbered
-  derive_clean_predictions(full_preds, clean_rows) -> clean-test predictions taken from test_full predictions
-  tune_clinical_thresholds(val_preds, pooled)      -> threshold (b) per source; CovidQA tuned on pooled RAGBench val
-  faithful_class_precision(labels, probs, thr)     -> TN / (TN + FN)
-  subset_metrics(preds, thr_ragtruth, thr_clinical)-> n, n_pos, prevalence, PR-AUC, AUROC, P/R/F1 at both thresholds
-  cluster_bootstrap_ci(labels, probs, groups, ...) -> 95% percentile CIs, resampling whole groups
-  spread(values)                                   -> mean, sample SD, min, max across seeds
-Plumbing (Claude Code): scripts/score_rq1.py (parity_report), scripts/report_rq1.py (build_m3_summary, group_by, report).
+Functions (src/rq1.py):
+  check_g_snapshot(snapshot)                        -> raises if the run is not a reportable G run in the current format
+  load_g_checkpoint(run_dir, device, build_model)   -> (model in eval mode, snapshot)
+  assign_row_keys(rows)                             -> stable per-row key, duplicates numbered
+  derive_clean_predictions(full_preds, clean_rows)  -> clean-test predictions taken from test_full predictions
+  tune_clinical_thresholds(val_preds, pooled)       -> threshold (b) per source; CovidQA tuned on pooled RAGBench val
+  faithful_class_precision(labels, probs, thr)      -> TN / (TN + FN)
+  subset_metrics(preds, thr_ragtruth, thr_clinical) -> n, n_pos, prevalence, PR-AUC, AUROC, P/R/F1 at both thresholds
+  cluster_bootstrap_ci(labels, probs, groups, ...)  -> 95% percentile CIs, resampling whole groups
+  spread(values)                                    -> mean, sample SD, min, max across seeds
+Plumbing: scripts/score_rq1.py (parity_report), scripts/report_rq1.py (build_m3_summary, group_by, report).
 
-Decisions used (17 Nov): headline = test_full; duplicates kept and numbered; bootstrap per seed, B=2000,
+Decisions used: headline = test_full; duplicates kept and numbered; bootstrap per seed, B=2000,
 F1 at both thresholds; threshold (b) on clean clinical val with CovidQA pooled with PubMedQA.
 
 Run: python -m pytest tests/test_rq1.py

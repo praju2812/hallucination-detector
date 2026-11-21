@@ -6,7 +6,7 @@ ModernBERT tokenizer exactly as src/encoding.py does, with NO truncation (self-c
 Groups: halueval, ragtruth_qa, ragtruth_summary, ragtruth (QA + Summary), all; each for all splits and train only.
 Also: A2b smallest 256-multiple window covering 95% / 97.5% of each group (train), and A3 G's AUROC / PR-AUC on
 RAGTruth Summary test rows with vs without context truncation (Phase 2 flags + predictions).
-Clinical sources: pending (they need Prajakta's build_clinical functions).
+Clinical sources: pending (they need build_clinical functions).
 
 Run: python -m scripts.analysis.a_lengths [--flags results/truncation_flags_v2.jsonl]
          [--runs-glob 'runs/run_seed*/predictions.jsonl'] [--out-dir results/analysis_<today>]

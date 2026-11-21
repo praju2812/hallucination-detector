@@ -167,7 +167,7 @@ def refuse_protected_out_dir(out_dir: str) -> None:
     for p in PROTECTED_DIRS:
         protected = Path(p).resolve()
         if target == protected or protected in target.parents:
-            raise ValueError(f"refusing to write into {p}/ (hard rule 1): got --out-dir {out_dir}")
+            raise ValueError(f"refusing to write into {p}: got --out-dir {out_dir}")
 
 
 def build_tiny(tiny_v1: list[dict], rows: list[dict]) -> list[dict]:
