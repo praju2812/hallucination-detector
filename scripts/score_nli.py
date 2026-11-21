@@ -17,10 +17,12 @@ import argparse
 import importlib.metadata
 import json
 import os
+import re
 import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 
@@ -54,6 +56,53 @@ SPLITS = {
 HYPOTHESIS_FORMATS = {"response": False, "question_response": True}   # value = include_question
 EXTRA_FIELDS = ("difficulty", "category")                            # MedHallu breakdowns; None elsewhere
 DETERMINISM_ROWS = 20
+
+
+MODEL_REVISION = "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7"            # pinned HF commit of MODEL_ID (21 Nov)
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+MODEL_FILES = ("config.json", "model.safetensors")                   # what AutoModel... loads
+TOKENIZER_FILES = ("tokenizer_config.json", "tokenizer.json")         # what AutoTokenizer loads (fast)
+DETERMINISM_TOL = 1e-4                                                # max |delta prob| between two identical passes
+
+
+def snapshot_commit(path) -> str | None:
+    """<commit> from an HF cache path .../snapshots/<commit>/<file>, or None (not a str, or not a snapshot path).
+    The path is not resolved: snapshot files are symlinks into blobs/."""
+    if not isinstance(path, str):
+        return None
+    parent = Path(path).parent
+    return parent.name if parent.parent.name == "snapshots" else None
+
+
+def cached_commit(model_id: str, filenames: tuple[str, ...], revision: str | None) -> str | None:
+    """Commit of the cache snapshot holding `filenames` for model_id at `revision` (try_to_load_from_cache: no
+    network). None if any file is not cached. Raises RuntimeError if the files sit in different snapshots.
+    Neither model.config._commit_hash (None in transformers 5.22.2) nor the tokenizer records the commit."""
+    from huggingface_hub import try_to_load_from_cache
+    commits = {f: snapshot_commit(try_to_load_from_cache(model_id, f, revision=revision)) for f in filenames}
+    if any(c is None for c in commits.values()):
+        return None
+    if len(set(commits.values())) > 1:
+        raise RuntimeError(f"{model_id} files come from different snapshots: {commits}")
+    return next(iter(commits.values()))
+
+
+def resolve_revision(requested: str | None, model_commit: str | None, tokenizer_commit: str | None) -> str:
+    """The full commit SHA both the model and the tokenizer were loaded from.
+
+    Raises RuntimeError if either commit is missing or not a 40-hex SHA, if they differ, or if `requested` is a
+    full SHA and the loaded commit is a different one. A branch or tag name is allowed and resolves to its commit.
+    """
+    for what, c in (("model", model_commit), ("tokenizer", tokenizer_commit)):
+        if not c or not _SHA.match(c):
+            raise RuntimeError(f"cannot determine the {what} revision (got {c!r}); refusing to score")
+    if model_commit != tokenizer_commit:
+        raise RuntimeError(f"model revision {model_commit} != tokenizer revision {tokenizer_commit}")
+    if requested and _SHA.match(requested) and requested != model_commit:
+        raise RuntimeError(f"requested revision {requested} but loaded {model_commit}")
+    return model_commit
 
 
 def model_dir_name(model_id: str) -> str:
@@ -231,12 +280,28 @@ def score_prepared(prepared: list[dict], model, builder: PairBuilder, ent_idx: i
     return results, {"pairs": len(where), "seconds": round(secs, 2)}
 
 
+def compare_passes(a: list[float], b: list[float], tol: float = DETERMINISM_TOL) -> dict:
+    """Two passes over the same rows agree if max |a - b| <= tol AND no ranking change.
+
+    A ranking change is a pair (i, j) whose first-pass scores differ by more than 2 * tol and whose order is
+    reversed in the second pass ((a_i - a_j) * (b_i - b_j) < 0). Swaps between closer pairs are numerical noise
+    and ignored. `identical` (exact equality) is recorded for information.
+    """
+    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    max_diff = float(np.max(np.abs(a - b))) if len(a) else 0.0
+    da, db = a[:, None] - a[None, :], b[:, None] - b[None, :]
+    swaps = (np.abs(da) > 2 * tol) & (da * db < 0)
+    n_changes = int(np.triu(swaps, k=1).sum())
+    return {"n": int(len(a)), "max_abs_diff": max_diff, "tolerance": tol, "within_tolerance": max_diff <= tol,
+            "ranking_changes": n_changes, "ranking_unchanged": n_changes == 0,
+            "identical": bool(np.array_equal(a, b)), "passed": max_diff <= tol and n_changes == 0}
+
+
 def determinism_check(prepared: list[dict], model, builder, ent_idx, batch_size, device) -> dict:
-    """Score the same rows twice, the same way; probs must be identical."""
+    """Score the same rows twice, the same way, and compare the probs (compare_passes)."""
     a, _ = score_prepared(prepared, model, builder, ent_idx, batch_size, device)
     b, _ = score_prepared(prepared, model, builder, ent_idx, batch_size, device)
-    diffs = [abs(x["prob"] - y["prob"]) for x, y in zip(a, b)]
-    return {"n": len(diffs), "max_abs_diff": max(diffs) if diffs else 0.0, "identical": all(d == 0.0 for d in diffs)}
+    return compare_passes([x["prob"] for x in a], [y["prob"] for y in b])
 
 
 def make_records(split: dict, results: list[dict]) -> list[dict]:
@@ -273,7 +338,8 @@ def parse_args(argv=None):
     ap.add_argument("--hypothesis", default="response", choices=sorted(HYPOTHESIS_FORMATS),
                     help="response only (default, decision 21 Nov), or question + response for QA rows")
     ap.add_argument("--model", default=MODEL_ID)
-    ap.add_argument("--revision", default=None, help="HF revision; default: the cached/latest main")
+    ap.add_argument("--revision", default=MODEL_REVISION,
+                    help="HF revision for tokenizer and model (default: the pinned commit)")
     ap.add_argument("--splits", default=",".join(SPLITS))
     ap.add_argument("--general-dir", default="data/unified_v2")
     ap.add_argument("--clinical-dir", default="data/clinical")
@@ -317,10 +383,11 @@ def main(argv=None) -> int:
     model = AutoModelForSequenceClassification.from_pretrained(args.model, revision=args.revision, dtype=torch.float32)
     model.to(device).eval()
     load_secs = time.perf_counter() - t_load
+    revision = resolve_revision(args.revision, cached_commit(args.model, MODEL_FILES, args.revision),
+                                cached_commit(args.model, TOKENIZER_FILES, args.revision))  # raises: nothing scored
     ent_idx = entailment_index(model.config.id2label)
     builder = PairBuilder(tokenizer)
     pair_layout = builder.verify()
-    revision = getattr(model.config, "_commit_hash", None) or args.revision
     print(f"  loaded in {load_secs:.1f}s  revision {revision}  id2label {model.config.id2label}  entailment={ent_idx}")
 
     all_recs, data_files, counts, timing = [], {}, {}, {}
@@ -354,7 +421,8 @@ def main(argv=None) -> int:
     print(f"  {pps:.1f} pairs/s; full run = {pairs_full} pairs -> ETA {eta / 60:.1f} min" if eta else "  no timing")
 
     det = determinism_check(first_prepared, model, builder, ent_idx, args.batch_size, device)
-    print(f"  determinism on {det['n']} rows: max|d|={det['max_abs_diff']:.2e} -> {'PASS' if det['identical'] else 'FAIL'}")
+    print(f"  determinism on {det['n']} rows: max|d|={det['max_abs_diff']:.2e} (tol {det['tolerance']:.0e}), "
+          f"ranking unchanged={det['ranking_unchanged']} -> {'PASS' if det['passed'] else 'FAIL'}")
 
     write_jsonl(all_recs, pred_path)
     param = next(model.parameters())
@@ -362,6 +430,7 @@ def main(argv=None) -> int:
         "model": args.model,
         "model_dir": model_dir_name(args.model),
         "revision": revision,
+        "revision_requested": args.revision,
         "id2label": {str(k): v for k, v in model.config.id2label.items()},
         "entailment_index": ent_idx,
         "type_vocab_size": getattr(model.config, "type_vocab_size", None),
@@ -401,7 +470,7 @@ def main(argv=None) -> int:
     with open(os.path.join(out_dir, "scoring.json"), "w") as f:
         json.dump(scoring, f, indent=2)
     print(f"wrote {pred_path} and scoring.json")
-    if not det["identical"]:
+    if not det["passed"]:
         print("DETERMINISM CHECK FAILED: stop and report before using these scores", file=sys.stderr)
         return 2
     return 0

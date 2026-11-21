@@ -141,7 +141,8 @@ def provenance_table(m: dict) -> list[str]:
             f"< {sc['min_words']} words merged) | {sc['device']} ({sc['device_name']}) | "
             f"{sc['precision']['param_dtype']}, autocast={sc['precision']['autocast']} | {sc['git_sha']} | "
             f"{sc['git_dirty']} | {det.get('n')} rows, max abs diff {det.get('max_abs_diff', float('nan')):.1e} "
-            f"({'PASS' if det.get('identical') else 'FAIL'}) |"]
+            f"(tol {det.get('tolerance', float('nan')):.0e}, ranking unchanged {det.get('ranking_unchanged')}; "
+            f"{'PASS' if det.get('passed') else 'FAIL'}) |"]
 
 
 def counts_note(sc: dict) -> str:

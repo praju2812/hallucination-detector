@@ -213,6 +213,148 @@ def test_prepare_row_applies_preamble_step_and_counts():           # needs bodie
     assert (c["medhallu"]["stripped_prefixes"], c["medhallu"]["merged_colon_lines"]) == (0, 0)
 
 
+PINNED = "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7"
+
+
+def test_revision_defaults_to_pinned_commit():
+    from scripts.score_nli import MODEL_REVISION, parse_args
+    assert MODEL_REVISION == PINNED and parse_args([]).revision == PINNED
+
+
+def test_resolve_revision_accepts_matching_commits():
+    from scripts.score_nli import resolve_revision
+    assert resolve_revision(PINNED, PINNED, PINNED) == PINNED
+    assert resolve_revision("main", PINNED, PINNED) == PINNED            # a branch name resolves to its commit
+    assert resolve_revision(None, PINNED, PINNED) == PINNED
+
+
+@pytest.mark.parametrize("requested, model_c, tok_c", [
+    (PINNED, None, PINNED),                    # model commit unknown
+    (PINNED, PINNED, None),                    # tokenizer commit unknown
+    (PINNED, "", PINNED),
+    (PINNED, "b3546ea", "b3546ea"),            # not a full SHA
+    (PINNED, PINNED, "a" * 40),                # model and tokenizer from different commits
+    ("a" * 40, PINNED, PINNED),                # loaded a different commit than requested
+])
+def test_resolve_revision_refuses(requested, model_c, tok_c):
+    from scripts.score_nli import resolve_revision
+    with pytest.raises(RuntimeError):
+        resolve_revision(requested, model_c, tok_c)
+
+
+def test_snapshot_commit_reads_the_snapshot_folder(tmp_path):
+    from scripts.score_nli import snapshot_commit
+    assert snapshot_commit(str(tmp_path / "models--x--y" / "snapshots" / PINNED / "config.json")) == PINNED
+    assert snapshot_commit(str(tmp_path / "local" / "config.json")) is None          # not a cache snapshot
+    assert snapshot_commit(None) is None                                              # not cached
+    assert snapshot_commit(object()) is None                                          # _CACHED_NO_EXIST sentinel
+
+
+def _fake_cache(monkeypatch, tmp_path, commit_by_file: dict):
+    """try_to_load_from_cache -> .../snapshots/<commit>/<file> for the files given; None for the rest.
+    Records the calls so the test can check repo id and revision."""
+    import huggingface_hub
+    calls = []
+
+    def fake(repo_id, filename, revision=None, **k):
+        calls.append((repo_id, filename, revision))
+        c = commit_by_file.get(filename)
+        return None if c is None else str(tmp_path / "hub" / "models--x--y" / "snapshots" / c / filename)
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", fake)
+    return calls
+
+
+def test_cached_commit_model_and_tokenizer_from_fake_cache(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    calls = _fake_cache(monkeypatch, tmp_path, {f: PINNED for f in MODEL_FILES + TOKENIZER_FILES})
+    m, t = cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED)
+    assert m == t == PINNED and resolve_revision(PINNED, m, t) == PINNED
+    assert {(r, f, rev) for r, f, rev in calls} == {("x/y", f, PINNED) for f in MODEL_FILES + TOKENIZER_FILES}
+    assert set(MODEL_FILES) == {"config.json", "model.safetensors"}
+
+
+def test_cached_commit_missing_file_is_unknown_and_resolve_refuses(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    _fake_cache(monkeypatch, tmp_path, {"config.json": PINNED, **{f: PINNED for f in TOKENIZER_FILES}})
+    m = cached_commit("x/y", MODEL_FILES, PINNED)                        # model.safetensors not cached
+    assert m is None
+    with pytest.raises(RuntimeError):
+        resolve_revision(PINNED, m, cached_commit("x/y", TOKENIZER_FILES, PINNED))
+
+
+def test_cached_commit_files_from_different_snapshots_raise(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, cached_commit
+    _fake_cache(monkeypatch, tmp_path, {"config.json": PINNED, "model.safetensors": "a" * 40})
+    with pytest.raises(RuntimeError):
+        cached_commit("x/y", MODEL_FILES, PINNED)
+
+
+def test_model_commit_differs_from_tokenizer_or_request_refused(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    other = "c" * 40
+    _fake_cache(monkeypatch, tmp_path, {**{f: other for f in MODEL_FILES}, **{f: PINNED for f in TOKENIZER_FILES}})
+    with pytest.raises(RuntimeError):                                    # model != tokenizer
+        resolve_revision(PINNED, cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED))
+    _fake_cache(monkeypatch, tmp_path, {f: other for f in MODEL_FILES + TOKENIZER_FILES})
+    with pytest.raises(RuntimeError):                                    # both != requested
+        resolve_revision(PINNED, cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED))
+
+
+def test_compare_passes_tolerance_and_ranking():
+    from scripts.score_nli import DETERMINISM_TOL, compare_passes
+    assert DETERMINISM_TOL == 1e-4
+    a = [0.10, 0.50, 0.90]
+    same = compare_passes(a, list(a))
+    assert same == {"n": 3, "max_abs_diff": 0.0, "tolerance": 1e-4, "within_tolerance": True,
+                    "ranking_changes": 0, "ranking_unchanged": True, "identical": True, "passed": True}
+    near = compare_passes(a, [0.10 + 5e-5, 0.50 - 5e-5, 0.90])           # within tolerance, same order
+    assert near["passed"] and not near["identical"] and near["max_abs_diff"] == pytest.approx(5e-5)
+    far = compare_passes(a, [0.10, 0.50 + 2e-4, 0.90])                   # over tolerance
+    assert not far["passed"] and not far["within_tolerance"] and far["ranking_unchanged"]
+    assert compare_passes([], [])["passed"]
+
+
+def test_compare_passes_near_tie_swap_passes():
+    from scripts.score_nli import compare_passes
+    # rows 0 and 1 differ by 1e-5 (< 2 * tol) in pass 1 and swap in pass 2: numerical noise, ignored
+    r = compare_passes([0.50, 0.50 + 1e-5, 0.90], [0.50 + 1e-5, 0.50, 0.90])
+    assert r["passed"] and r["ranking_unchanged"] and r["ranking_changes"] == 0 and not r["identical"]
+    # just over 2 * tol apart counts; just under does not
+    assert compare_passes([0.50, 0.50 + 1.9e-4], [0.50 + 1.9e-4, 0.50])["ranking_changes"] == 0
+    assert compare_passes([0.50, 0.50 + 2.1e-4], [0.50 + 2.1e-4, 0.50])["ranking_changes"] == 1
+
+
+def test_compare_passes_swap_between_separated_rows_fails():
+    from scripts.score_nli import compare_passes
+    r = compare_passes([0.10, 0.50, 0.90], [0.50, 0.10, 0.90])            # rows 0 and 1 are 0.4 apart and swap
+    assert not r["passed"] and not r["ranking_unchanged"] and r["ranking_changes"] == 1
+
+
+def test_device_prefers_cuda(monkeypatch):
+    from src.train import get_device
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert get_device() == "cuda"
+
+
+def test_default_splits_are_ragtruth_val_test_and_clinical_val_test_full():
+    from scripts.score_nli import SPLITS, parse_args
+    assert parse_args([]).splits.split(",") == ["ragtruth_val", "ragtruth_test", "clinical_val", "clinical_test_full"]
+    assert SPLITS["ragtruth_test"] == ("general", "test.jsonl", "ragtruth")
+    assert SPLITS["clinical_test_full"] == ("clinical", "test_full.jsonl", None)
+
+
+def test_absolute_out_root_is_used(tmp_path, capsys):
+    """An absolute --out-root (e.g. /kaggle/working/...) is used as given: the overwrite guard sees the file there
+    and stops before any model is loaded."""
+    from scripts.score_nli import main as score_main
+    out_root = tmp_path / "kaggle" / "working" / "nli"
+    pred = out_root / "DeBERTa-v3-large-mnli-fever-anli-ling-wanli" / "predictions.jsonl"
+    pred.parent.mkdir(parents=True)
+    pred.write_text("")
+    assert score_main(["--out-root", str(out_root)]) == 1
+    assert str(pred) in capsys.readouterr().err
+
+
 def test_hypothesis_format_defaults_to_response():
     from scripts.score_nli import parse_args
     assert parse_args([]).hypothesis == "response"
@@ -224,7 +366,7 @@ def test_determinism_check_and_records():
     rows = [_row("Aspirin gave pain relief.", CTX, gid="g1"), _row("The patient died suddenly at home.", CTX, 1, gid="g2")]
     prepared = [prepare_row(r, b, False, 4, 64, 16) for r in rows]
     det = determinism_check(prepared, FakeNLI(), b, 1, 2, "cpu")
-    assert det == {"n": 2, "max_abs_diff": 0.0, "identical": True}
+    assert det["n"] == 2 and det["max_abs_diff"] == 0.0 and det["passed"] and det["identical"]
     res, _ = score_prepared(prepared, FakeNLI(), b, 1, 2, "cpu")
     split = {"name": "clinical_test_full", "rows": rows, "idx": [5, 9], "keys": assign_row_keys(rows)}
     recs = make_records(split, res)
@@ -425,7 +567,8 @@ def _make_toy(tmp_path, limit=None):
                "limit": limit, "torch_version": "t", "transformers_version": "tf", "pairs_scored": 123,
                "data_files": {s: {"path": s, "rows_expected": len(r)} for s, r in splits.items()},
                "counts": {"ragtruth_test": {"ragtruth": {"rows": 80, "fallback_rows": 1, "capped_hypotheses": 2}}},
-               "determinism": {"n": 20, "max_abs_diff": 0.0, "identical": True}}
+               "determinism": {"n": 20, "max_abs_diff": 3e-6, "tolerance": 1e-4, "within_tolerance": True,
+                               "ranking_unchanged": True, "identical": False, "passed": True}}
     (nli / "toy-model" / "scoring.json").write_text(json.dumps(scoring))
     return data, nli
 
@@ -453,6 +596,7 @@ def test_report_end_to_end(tmp_path, monkeypatch):
         assert heading in text
     assert "| RAGTruth QA |" in text and "| RAGTruth Summary |" in text
     assert text.count("| F1 if every row flagged |") == 3
+    assert "20 rows, max abs diff 3.0e-06 (tol 1e-04, ranking unchanged True; PASS)" in text
     assert "—" not in text                 # no em dashes in reports
 
 
