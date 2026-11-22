@@ -26,6 +26,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 
 from scripts.analysis.common import (REPO, RUNS_GLOB, SPLITS, check_out_dir, load_config, load_tokenizer, load_unified_v2,
                                      full_lengths, self_check_lengths, md_table, write_json)
+from src.encoding import fit_first_lengths
 from utils.io import read_jsonl
 
 WINDOWS = (512, 1024, 1536, 2048, 4096)
@@ -73,17 +74,41 @@ def describe(L: np.ndarray) -> dict:
     }
 
 
-def coverage(L: np.ndarray, query: np.ndarray, resp: np.ndarray, n_special: int, resp_max: int) -> dict:
+def response_cut_fit_first(query: np.ndarray, ctx: np.ndarray, resp: np.ndarray, n_special: int, resp_max: int,
+                           window: int) -> tuple[int, int]:
+    """(rows whose response is cut, rows the encoder would refuse) at `window`, under src.encoding's fit_first rule.
+
+    Uses fit_first_lengths itself (available = window - special tokens - query part): a response is cut only when
+    the row exceeds the window, and then to min(response, max(resp_max, available - context)). Rows for which
+    the encoder would raise (query part over the budget, or a part left with no tokens) are counted separately.
+    """
+    cut = refused = 0
+    for q, c, r in zip(query.tolist(), ctx.tolist(), resp.tolist()):
+        available = window - n_special - q
+        if available <= 0:                                  # Collator: query part alone exceeds the budget
+            refused += 1
+            continue
+        try:
+            _, keep_resp = fit_first_lengths(c, r, available, resp_max)
+        except ValueError:
+            refused += 1
+            continue
+        cut += keep_resp < r
+    return cut, refused
+
+
+def coverage(L: np.ndarray, query: np.ndarray, ctx: np.ndarray, resp: np.ndarray, n_special: int,
+             resp_max: int) -> dict:
     out = {}
     ref_lin = np.minimum(L, REF_WINDOW).astype(float).mean()
     ref_sq = (np.minimum(L, REF_WINDOW).astype(float) ** 2).mean()
     for w in WINDOWS:
         kept = np.minimum(L, w).astype(float)
-        # response kept by encode_with_response_budget: min(resp, resp_max, budget - query part)
-        resp_cap = np.minimum(resp_max, (w - n_special) - query)
+        n_cut, n_refused = response_cut_fit_first(query, ctx, resp, n_special, resp_max, w)
         out[w] = {
             "pct_truncated": float((L > w).mean() * 100),
-            "pct_response_cut": float((resp > resp_cap).mean() * 100),
+            "pct_response_cut": float(n_cut / len(L) * 100),          # fit_first; refused rows not counted as cut
+            "n_refused": n_refused,
             "mean_tokens_kept": float(kept.mean()),
             "proxy_lower_linear": float(kept.mean() / ref_lin),
             "proxy_upper_squared": float((kept ** 2).mean() / ref_sq),
@@ -189,9 +214,10 @@ def main() -> None:
         for name, pred in GROUPS.items():
             m = mask_split & np.array([pred(g) for g in groups])
             L, q, r = lens["total"][m], lens["query"][m], lens["response"][m]
+            c = lens["first"][m] - q                                 # context tokens, as the Collator counts them
             res_scope[name] = {
                 "describe": describe(L),
-                "coverage": coverage(L, q, r, n_special, resp_max),
+                "coverage": coverage(L, q, c, r, n_special, resp_max),
                 "query_part": {"mean": float(q.mean()), "max": int(q.max())},
                 "response": {"mean": float(r.mean()), "p95": float(np.percentile(r, 95)), "max": int(r.max()),
                              "pct_over_resp_max": float((r > resp_max).mean() * 100)},
@@ -268,9 +294,15 @@ def main() -> None:
                        [[g] + [round(v["coverage"][w]["pct_truncated"], 1) for w in WINDOWS] for g, v in res.items()]))
 
     for scope, res in scopes.items():
-        print(f"\n### A5a. % rows whose response is cut (response > min(resp_max, window budget - query part)), {scope}")
+        print(f"\n### A5a. % rows whose response is cut, fit_first (only when the row exceeds the window, then to "
+              f"max(resp_max, window budget - query part - context)), {scope}")
         print(md_table(["group"] + [str(w) for w in WINDOWS],
                        [[g] + [round(v["coverage"][w]["pct_response_cut"], 1) for w in WINDOWS] for g, v in res.items()]))
+        refused = {(g, w): v["coverage"][w]["n_refused"] for g, v in res.items() for w in WINDOWS
+                   if v["coverage"][w]["n_refused"]}
+        if refused:
+            print("Rows the encoder would refuse (not counted as cut): "
+                  + "; ".join(f"{g} @ {w}: {n}" for (g, w), n in refused.items()))
 
     for scope, res in scopes.items():
         print(f"\n### A6. Compute PROXY relative to 1024 (lower = mean kept tokens; upper = mean squared kept tokens), {scope}")

@@ -1,0 +1,70 @@
+{
+  "run": "run_seed42_20261120_225509",
+  "seed": 42,
+  "experiment": "G",
+  "truncation": "fit_first",
+  "checkpoint": "/Users/prajaktapriyadarsini/Documents/Projects/Hallucination_detector/runs/run_seed42_20261120_225509/best.pt",
+  "checkpoint_sha1": "2857592f81780e04760d5ccda06a42da03d32de4",
+  "train_git_sha": "266b0b3",
+  "git_sha": "3ebf7f1",
+  "git_dirty": false,
+  "device": "mps",
+  "device_name": "mps",
+  "precision": {
+    "param_dtype": "torch.float32",
+    "logits_dtype": "torch.float32",
+    "autocast": false
+  },
+  "torch_version": "2.15.0",
+  "transformers_version": "5.22.2",
+  "batch_size": 8,
+  "limit": null,
+  "data_files": {
+    "val": {
+      "path": "data/clinical/val.jsonl",
+      "sha1": "92fe32ae2a2dc75117fb8839b8b6027f71e41f32",
+      "rows_in_file": 2352
+    },
+    "test_full": {
+      "path": "data/clinical/test_full.jsonl",
+      "sha1": "154f307ca8a9c7b9d8009d9233e9f4de5909d02e",
+      "rows_in_file": 4696
+    }
+  },
+  "rows_scored": 7048,
+  "load_seconds": 3.03,
+  "timing": {
+    "val": {
+      "rows": 2352,
+      "seconds": 213.67,
+      "rows_per_s": 11.007
+    },
+    "test_full": {
+      "rows": 4696,
+      "seconds": 924.65,
+      "rows_per_s": 5.079
+    }
+  },
+  "rows_per_s": 6.192,
+  "eta_full_seconds_per_seed": 1138.3,
+  "parity": {
+    "n": 200,
+    "n_pos": 58,
+    "threshold": 0.2,
+    "max_abs_diff": 8.463859558105469e-06,
+    "mean_abs_diff": 6.87786377966404e-07,
+    "auroc_phase2": 0.669256920835357,
+    "auroc_new": 0.669256920835357,
+    "crossings": 0,
+    "crossing_frac": 0.0,
+    "checks": {
+      "max_abs_diff_lt_0.01": true,
+      "auroc_equal_3dp": true,
+      "crossings_le_1pct": true
+    },
+    "passed": true,
+    "val_path": "data/unified_v2/val.jsonl",
+    "val_sha1": "7097a7b6316e42460672df9ded06a3372311a8da"
+  },
+  "scored_at": "2026-11-22T18:26:37+00:00"
+}

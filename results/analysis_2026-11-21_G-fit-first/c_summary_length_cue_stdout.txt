@@ -1,0 +1,84 @@
+RAGTruth Summary rows (unified_v2, all splits): 5658, positives 1686 (29.8%), sources 943 of 943
+
+### C1a. Hallucination rate by ratio = response words / N (all splits)
+| ratio bin | n | positives | rate |
+|---|---|---|---|
+| < 0.8 | 1598 | 589 | 0.369 |
+| 0.8 to < 1.0 | 1851 | 533 | 0.288 |
+| 1.0 to < 1.2 | 1469 | 324 | 0.221 |
+| >= 1.2 | 740 | 240 | 0.324 |
+
+Ratio: mean 0.95, p5 0.59, median 0.93, p95 1.37. N: 160 distinct values, 25 to 200.
+
+### C1b. Hallucination rate by N (quartiles (160 distinct N values))
+| N bin | n | positives | rate |
+|---|---|---|---|
+| 25 to 82 | 1476 | 384 | 0.260 |
+| >82 to 103 | 1404 | 393 | 0.280 |
+| >103 to 179 | 1368 | 428 | 0.313 |
+| >179 to 200 | 1410 | 481 | 0.341 |
+
+### C2. Single-feature AUROC for the label (> 0.5: larger value, more often hallucinated)
+| rows | feature | n | positives | AUROC | 95% CI (group bootstrap) |
+|---|---|---|---|---|---|
+| all splits | N (word limit) | 5658 | 1686 | 0.544 | 0.528 to 0.561 |
+| all splits | response words | 5658 | 1686 | 0.516 | 0.499 to 0.533 |
+| all splits | ratio = words / N | 5658 | 1686 | 0.444 | 0.428 to 0.460 |
+| train | N (word limit) | 4308 | 1350 | 0.541 | 0.522 to 0.559 |
+| train | response words | 4308 | 1350 | 0.515 | 0.495 to 0.534 |
+| train | ratio = words / N | 4308 | 1350 | 0.448 | 0.430 to 0.467 |
+| val | N (word limit) | 450 | 132 | 0.543 | 0.491 to 0.595 |
+| val | response words | 450 | 132 | 0.524 | 0.466 to 0.575 |
+| val | ratio = words / N | 450 | 132 | 0.468 | 0.413 to 0.523 |
+| test | N (word limit) | 900 | 204 | 0.555 | 0.510 to 0.598 |
+| test | response words | 900 | 204 | 0.515 | 0.470 to 0.561 |
+| test | ratio = words / N | 900 | 204 | 0.418 | 0.377 to 0.464 |
+
+### C3a. Per generator (all splits)
+| generator | n | positives | rate | mean words | mean ratio | AUROC words | AUROC ratio |
+|---|---|---|---|---|---|---|---|
+| gpt-3.5-turbo-0613 | 943 | 54 | 0.057 | 141 | 1.14 | 0.568 | 0.547 |
+| gpt-4-0613 | 943 | 74 | 0.078 | 108 | 0.92 | 0.596 | 0.438 |
+| llama-2-13b-chat | 943 | 295 | 0.313 | 98 | 0.84 | 0.525 | 0.492 |
+| llama-2-70b-chat | 943 | 212 | 0.225 | 109 | 0.90 | 0.553 | 0.477 |
+| llama-2-7b-chat | 943 | 434 | 0.460 | 104 | 0.88 | 0.541 | 0.516 |
+| mistral-7B-instruct | 943 | 617 | 0.654 | 113 | 0.99 | 0.574 | 0.492 |
+
+### C3b. Length AUROC after stratifying by generator (all splits)
+| feature | pooled AUROC | weighted mean of within-generator AUROCs | pooled AUROC of within-generator rank | 95% CI (rank version) |
+|---|---|---|---|---|
+| response words | 0.516 | 0.553 | 0.542 | 0.524 to 0.558 |
+| ratio = words / N | 0.444 | 0.495 | 0.496 | 0.480 to 0.512 |
+
+Generator identity alone (score = generator's in-sample hallucination rate; optimistic): AUROC 0.780
+
+### C4. G (Phase 2 runs): prob vs response length and ratio, RAGTruth Summary TEST rows
+| run | n | G prob AUROC | all: prob vs words (Pearson / Spearman) | all: prob vs ratio (Pearson / Spearman) | label 0: prob vs words (Pearson / Spearman) | label 0: prob vs ratio (Pearson / Spearman) | label 1: prob vs words (Pearson / Spearman) | label 1: prob vs ratio (Pearson / Spearman) |
+|---|---|---|---|---|---|---|---|---|
+| run_seed42_20261120_225509 | 900 | 0.676 | 0.20 / 0.29 | -0.21 / -0.26 | 0.25 / 0.32 | -0.17 / -0.21 | 0.09 / 0.16 | -0.25 / -0.30 |
+| run_seed43_20261121_000845 | 900 | 0.658 | 0.07 / 0.07 | -0.16 / -0.24 | 0.10 / 0.08 | -0.15 / -0.22 | -0.01 / -0.01 | -0.12 / -0.16 |
+| run_seed44_20261121_012213 | 900 | 0.658 | 0.20 / 0.13 | -0.26 / -0.31 | 0.19 / 0.11 | -0.21 / -0.26 | 0.23 / 0.19 | -0.34 / -0.36 |
+
+rows per subset: all 900, label 0 696, label 1 204; single-feature AUROC on the same test rows: N (word limit) 0.555, response words 0.515, ratio = words / N 0.418
+
+### C5. RAGTruth QA: the instruction dropped from the query
+| check | value |
+|---|---|
+| QA sources | 989 |
+| distinct prompt line 1 | 1 |
+| sources with line 1 = 'Briefly answer the following question:' | 989 |
+| distinct templates (prompt minus question and passages) | 1 |
+| distinct templates with the passage-count word masked | 1 |
+| passage-count words | three: 989 |
+| unified_v2 QA rows with query == stripped question | 5934 of 5934 |
+
+Template (989 sources):
+```
+Briefly answer the following question:
+{question}
+Bear in mind that your response should be strictly based on the following {k} passages:
+{passages}In case the passages do not contain the necessary information to answer the question, please reply with: "Unable to answer based on given passages."
+output:
+```
+
+Wrote /Users/prajaktapriyadarsini/Documents/Projects/Hallucination_detector/results/analysis_2026-11-21/c_summary_length_cue.json
