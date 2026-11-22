@@ -27,13 +27,9 @@ class HallucinationDetector(nn.Module):
             kwargs["token_type_ids"] = token_type_ids
         out = self.backbone(**kwargs)
 
-        # Pooling: take the first token ([CLS]) representation.
-        # DeBERTa has no trained pooler head, so we pool the last hidden state
-        # ourselves. First-token pooling is the default here partly because your
-        # RA clustering work already found first-token beat mean pooling on
-        # SPECTER; worth checking whether that holds for this task too.
-        # TODO(you): try mean pooling over non-pad tokens as an ablation and
-        # compare PR-AUC. Mean pooling needs the attention_mask to exclude pads.
+        # Pooling: the first-token ([CLS]) representation, the standard choice for fine-tuned
+        # cross-encoders. Mean pooling over non-pad tokens (which needs the attention_mask) was
+        # not ablated.
         pooled = out.last_hidden_state[:, 0]        # [batch, hidden]
 
         pooled = self.dropout(pooled)

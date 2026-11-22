@@ -1,0 +1,607 @@
+"""Phase 6 plumbing: pair building and batching (scripts/score_nli.py) and outputs of scripts/report_nli.py.
+
+No model download: a fake word-level tokenizer and a fake 3-label NLI model stand in.
+Tests marked "needs bodies" call the src/nli.py templates, so they pass only once those bodies are written.
+The pair-layout, M5-shape and report tests run now.
+
+Run: python -m pytest tests/test_nli_plumbing.py
+"""
+
+import json
+import os
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+import torch
+
+import scripts.mvp_check as mvp                 # module import: pytest must not collect mvp.test_block as a test
+from scripts.report_nli import build_m5_summary, main as report_main
+from scripts.score_nli import (
+    PairBuilder,
+    determinism_check,
+    make_records,
+    n_pairs,
+    prepare_row,
+    score_prepared,
+    split_counts,
+)
+from src.rq1 import assign_row_keys
+
+CLS, SEP, PAD = 1, 2, 0
+
+
+class FakeTokenizer:
+    """Word-level: one id per lower-cased word (punctuation stripped). Pair layout [CLS] a [SEP] b [SEP]."""
+    cls_token_id, sep_token_id, pad_token_id = CLS, SEP, PAD
+    model_input_names = ["input_ids", "attention_mask"]
+
+    def __init__(self):
+        self.vocab = {}
+
+    def _ids(self, text):
+        return [self.vocab.setdefault(w.lower().strip(".,:;!?*-"), len(self.vocab) + 10)
+                for w in text.split() if w.strip(".,:;!?*-")]
+
+    def __call__(self, text, text_pair=None, add_special_tokens=True):
+        a = self._ids(text)
+        if not add_special_tokens:
+            ids = a
+        elif text_pair is None:
+            ids = [CLS] + a + [SEP]
+        else:
+            ids = [CLS] + a + [SEP] + self._ids(text_pair) + [SEP]
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}       # like a real tokenizer
+
+    def num_special_tokens_to_add(self, pair=False):
+        return 3 if pair else 2
+
+
+class FakeNLI:
+    """P(entailment) rises with the share of hypothesis words found in the premise window.
+    Entailment is label 1 here, so a hard-coded index 0 would fail the tests."""
+    config = SimpleNamespace(id2label={0: "contradiction", 1: "entailment", 2: "neutral"})
+
+    def __call__(self, input_ids, attention_mask, token_type_ids=None):
+        rows = []
+        for ids, m in zip(input_ids.tolist(), attention_mask.tolist()):
+            ids = [t for t, k in zip(ids, m) if k]
+            p1 = ids.index(SEP)
+            p2 = ids.index(SEP, p1 + 1)
+            premise, hyp = set(ids[1:p1]), ids[p1 + 1:p2]
+            share = sum(t in premise for t in hyp) / len(hyp)
+            rows.append([0.0, 8.0 * share - 4.0, 0.0])
+        return SimpleNamespace(logits=torch.tensor(rows))
+
+
+# ---- pair layout (runs now) ---------------------------------------------------------------------
+
+def test_pair_builder_layout_verified_against_tokenizer():
+    b = PairBuilder(FakeTokenizer())
+    info = b.verify()
+    assert info["verified"] and info["n_special"] == 3
+    assert info["keys_compared"] == ["attention_mask", "input_ids"]           # every key the tokenizer returns
+    ids, tt = b.build([10, 11], [12])
+    assert ids == [CLS, 10, 11, SEP, 12, SEP] and tt == [0, 0, 0, 0, 1, 1]
+
+
+class _PairOverride(FakeTokenizer):
+    """FakeTokenizer whose PAIR output is rewritten by self.edit(out, a_ids, b_ids)."""
+    def __call__(self, text, text_pair=None, add_special_tokens=True):
+        out = super().__call__(text, text_pair, add_special_tokens)
+        if text_pair is not None and add_special_tokens:
+            out = self.edit(out, self._ids(text), self._ids(text_pair))
+        return out
+
+
+def test_pair_builder_rejects_a_different_layout():
+    class RobertaStyle(_PairOverride):
+        def edit(self, out, a, b):
+            ids = [CLS] + a + [SEP, SEP] + b + [SEP]
+            return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+    with pytest.raises(RuntimeError, match="input_ids differs"):
+        PairBuilder(RobertaStyle()).verify()
+
+
+def test_pair_builder_compares_attention_mask():
+    class OddMask(_PairOverride):
+        def edit(self, out, a, b):
+            return {**out, "attention_mask": [1] * (len(out["input_ids"]) - 1) + [0]}
+    with pytest.raises(RuntimeError, match="attention_mask differs"):
+        PairBuilder(OddMask()).verify()
+
+
+def test_pair_builder_token_type_ids_returned_but_not_a_model_input():
+    class ExtraTypes(_PairOverride):                     # model_input_names has no token_type_ids
+        def edit(self, out, a, b):
+            return {**out, "token_type_ids": [0] * (len(a) + 2) + [1] * (len(b) + 1)}
+    with pytest.raises(RuntimeError, match="keys differ"):
+        PairBuilder(ExtraTypes()).verify()
+
+
+def test_pair_builder_compares_token_type_ids_when_used():
+    class WithTypes(_PairOverride):
+        model_input_names = ["input_ids", "token_type_ids", "attention_mask"]
+        def edit(self, out, a, b):
+            return {**out, "token_type_ids": [0] * (len(a) + 2) + [1] * (len(b) + 1)}
+    info = PairBuilder(WithTypes()).verify()
+    assert info["keys_compared"] == ["attention_mask", "input_ids", "token_type_ids"] and info["token_type_ids"]
+
+    class WrongTypes(WithTypes):
+        def edit(self, out, a, b):
+            return {**out, "token_type_ids": [0] * len(out["input_ids"])}
+    with pytest.raises(RuntimeError, match="token_type_ids differs"):
+        PairBuilder(WrongTypes()).verify()
+
+
+# ---- scoring loop with the fake model (needs bodies) ---------------------------------------------
+
+def _row(answer, context, label=0, source="ragbench_pubmedqa", task="qa", gid="g", query="What happened here?"):
+    return {"answer": answer, "context": context, "label": label, "source": source, "task": task,
+            "group_id": gid, "query": query}
+
+
+CTX = "the patient took aspirin daily for pain relief and recovered well"
+
+
+def test_score_supported_vs_unsupported_rows():
+    b = PairBuilder(FakeTokenizer())
+    rows = [_row("The patient took aspirin daily. The patient recovered well.", CTX),     # every word is in CTX
+            _row("The patient took aspirin daily. The patient died yesterday suddenly.", CTX, label=1)]
+    prepared = [prepare_row(r, b, False, stride=4, max_length=64, hyp_cap=16) for r in rows]
+    res, st = score_prepared(prepared, FakeNLI(), b, ent_idx=1, batch_size=3, device="cpu")
+    assert st["pairs"] == sum(n_pairs(p) for p in prepared) == 4
+    assert res[0]["prob"] < 0.1 < 0.5 < res[1]["prob"]                       # min over sentences drives row 2 up
+    assert res[1]["sentence_support"][0] > 0.9 > res[1]["sentence_support"][1]
+    assert res[0]["n_sentences"] == 2 and res[0]["n_windows"] == 1
+
+
+def test_support_found_in_a_later_window_counts():
+    b = PairBuilder(FakeTokenizer())
+    filler = " ".join(f"w{i}" for i in range(80))
+    row = _row("The rare drug cured the disease.", filler + " the rare drug cured the disease")
+    p = prepare_row(row, b, False, stride=4, max_length=24, hyp_cap=8)
+    assert len(p["spans"][0]) > 1                                             # several windows
+    res, _ = score_prepared([p], FakeNLI(), b, ent_idx=1, batch_size=2, device="cpu")
+    assert res[0]["prob"] < 0.1                                               # max over windows finds the support
+    assert res[0]["n_windows"] == len(p["spans"][0])
+
+
+def test_batch_size_does_not_change_scores():
+    b = PairBuilder(FakeTokenizer())
+    rows = [_row("The patient took aspirin daily. The patient died yesterday suddenly.", CTX * 3),
+            _row("Aspirin gave pain relief to the patient.", CTX)]
+    prepared = [prepare_row(r, b, False, stride=4, max_length=20, hyp_cap=8) for r in rows]
+    r1, _ = score_prepared(prepared, FakeNLI(), b, 1, batch_size=1, device="cpu")
+    r7, _ = score_prepared(prepared, FakeNLI(), b, 1, batch_size=7, device="cpu")
+    assert [x["prob"] for x in r1] == pytest.approx([x["prob"] for x in r7], abs=1e-6)
+
+
+def test_question_format_changes_only_qa_rows():
+    b = PairBuilder(FakeTokenizer())
+    qa = _row("Aspirin gave pain relief.", CTX, query="Did aspirin help the patient?")
+    sm = _row("Aspirin gave pain relief.", CTX, task="summary", query="Summarize the article.")
+    assert prepare_row(qa, b, True, 4, 64, 16)["hyps"] != prepare_row(qa, b, False, 4, 64, 16)["hyps"]
+    assert prepare_row(sm, b, True, 4, 64, 16)["hyps"] == prepare_row(sm, b, False, 4, 64, 16)["hyps"]
+
+
+def test_fallback_and_capped_counts():
+    b = PairBuilder(FakeTokenizer())
+    long_sentence = " ".join(f"x{i}" for i in range(30)) + "."
+    rows = [_row("---\n***", CTX), _row(long_sentence, CTX), _row("Aspirin gave pain relief.", CTX)]
+    prepared = [prepare_row(r, b, False, stride=4, max_length=40, hyp_cap=16) for r in rows]
+    assert [p["fell_back"] for p in prepared] == [True, False, False]
+    assert [p["n_capped"] for p in prepared] == [0, 1, 0]
+    assert all(40 - len(h) - 3 > 4 for p in prepared for h in p["hyps"])      # budget stays above the stride
+    c = split_counts({"rows": rows}, prepared)["ragbench_pubmedqa"]
+    assert c["rows"] == 3 and c["fallback_rows"] == 1 and c["capped_hypotheses"] == 1
+
+
+_PREAMBLE_ANSWER = ("Based on the given passages, here are the facts:\n* The patient took aspirin daily\n"
+                    "* The patient recovered well")
+
+
+def test_prepare_row_applies_preamble_step_and_counts():           # needs bodies (normalize_preambles)
+    b = PairBuilder(FakeTokenizer())
+    rows = [_row(_PREAMBLE_ANSWER, CTX), _row("Aspirin gave pain relief.", CTX, source="medhallu")]
+    prepared = [prepare_row(r, b, False, 4, 64, 16) for r in rows]
+    assert prepared[0]["sentences"] == ["here are the facts: * The patient took aspirin daily", "* The patient recovered well"]
+    assert (prepared[0]["n_stripped"], prepared[0]["n_merged"]) == (1, 1)
+    assert len(prepared[0]["hyps"]) == 2                                   # hypotheses built from the AFTER sentences
+    c = split_counts({"rows": rows}, prepared)
+    assert (c["ragbench_pubmedqa"]["stripped_prefixes"], c["ragbench_pubmedqa"]["merged_colon_lines"]) == (1, 1)
+    assert (c["medhallu"]["stripped_prefixes"], c["medhallu"]["merged_colon_lines"]) == (0, 0)
+
+
+PINNED = "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7"
+
+
+def test_revision_defaults_to_pinned_commit():
+    from scripts.score_nli import MODEL_REVISION, parse_args
+    assert MODEL_REVISION == PINNED and parse_args([]).revision == PINNED
+
+
+def test_resolve_revision_accepts_matching_commits():
+    from scripts.score_nli import resolve_revision
+    assert resolve_revision(PINNED, PINNED, PINNED) == PINNED
+    assert resolve_revision("main", PINNED, PINNED) == PINNED            # a branch name resolves to its commit
+    assert resolve_revision(None, PINNED, PINNED) == PINNED
+
+
+@pytest.mark.parametrize("requested, model_c, tok_c", [
+    (PINNED, None, PINNED),                    # model commit unknown
+    (PINNED, PINNED, None),                    # tokenizer commit unknown
+    (PINNED, "", PINNED),
+    (PINNED, "b3546ea", "b3546ea"),            # not a full SHA
+    (PINNED, PINNED, "a" * 40),                # model and tokenizer from different commits
+    ("a" * 40, PINNED, PINNED),                # loaded a different commit than requested
+])
+def test_resolve_revision_refuses(requested, model_c, tok_c):
+    from scripts.score_nli import resolve_revision
+    with pytest.raises(RuntimeError):
+        resolve_revision(requested, model_c, tok_c)
+
+
+def test_snapshot_commit_reads_the_snapshot_folder(tmp_path):
+    from scripts.score_nli import snapshot_commit
+    assert snapshot_commit(str(tmp_path / "models--x--y" / "snapshots" / PINNED / "config.json")) == PINNED
+    assert snapshot_commit(str(tmp_path / "local" / "config.json")) is None          # not a cache snapshot
+    assert snapshot_commit(None) is None                                              # not cached
+    assert snapshot_commit(object()) is None                                          # _CACHED_NO_EXIST sentinel
+
+
+def _fake_cache(monkeypatch, tmp_path, commit_by_file: dict):
+    """try_to_load_from_cache -> .../snapshots/<commit>/<file> for the files given; None for the rest.
+    Records the calls so the test can check repo id and revision."""
+    import huggingface_hub
+    calls = []
+
+    def fake(repo_id, filename, revision=None, **k):
+        calls.append((repo_id, filename, revision))
+        c = commit_by_file.get(filename)
+        return None if c is None else str(tmp_path / "hub" / "models--x--y" / "snapshots" / c / filename)
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", fake)
+    return calls
+
+
+def test_cached_commit_model_and_tokenizer_from_fake_cache(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    calls = _fake_cache(monkeypatch, tmp_path, {f: PINNED for f in MODEL_FILES + TOKENIZER_FILES})
+    m, t = cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED)
+    assert m == t == PINNED and resolve_revision(PINNED, m, t) == PINNED
+    assert {(r, f, rev) for r, f, rev in calls} == {("x/y", f, PINNED) for f in MODEL_FILES + TOKENIZER_FILES}
+    assert set(MODEL_FILES) == {"config.json", "model.safetensors"}
+
+
+def test_cached_commit_missing_file_is_unknown_and_resolve_refuses(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    _fake_cache(monkeypatch, tmp_path, {"config.json": PINNED, **{f: PINNED for f in TOKENIZER_FILES}})
+    m = cached_commit("x/y", MODEL_FILES, PINNED)                        # model.safetensors not cached
+    assert m is None
+    with pytest.raises(RuntimeError):
+        resolve_revision(PINNED, m, cached_commit("x/y", TOKENIZER_FILES, PINNED))
+
+
+def test_cached_commit_files_from_different_snapshots_raise(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, cached_commit
+    _fake_cache(monkeypatch, tmp_path, {"config.json": PINNED, "model.safetensors": "a" * 40})
+    with pytest.raises(RuntimeError):
+        cached_commit("x/y", MODEL_FILES, PINNED)
+
+
+def test_model_commit_differs_from_tokenizer_or_request_refused(monkeypatch, tmp_path):
+    from scripts.score_nli import MODEL_FILES, TOKENIZER_FILES, cached_commit, resolve_revision
+    other = "c" * 40
+    _fake_cache(monkeypatch, tmp_path, {**{f: other for f in MODEL_FILES}, **{f: PINNED for f in TOKENIZER_FILES}})
+    with pytest.raises(RuntimeError):                                    # model != tokenizer
+        resolve_revision(PINNED, cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED))
+    _fake_cache(monkeypatch, tmp_path, {f: other for f in MODEL_FILES + TOKENIZER_FILES})
+    with pytest.raises(RuntimeError):                                    # both != requested
+        resolve_revision(PINNED, cached_commit("x/y", MODEL_FILES, PINNED), cached_commit("x/y", TOKENIZER_FILES, PINNED))
+
+
+def test_compare_passes_tolerance_and_ranking():
+    from scripts.score_nli import DETERMINISM_TOL, compare_passes
+    assert DETERMINISM_TOL == 1e-4
+    a = [0.10, 0.50, 0.90]
+    same = compare_passes(a, list(a))
+    assert same == {"n": 3, "max_abs_diff": 0.0, "tolerance": 1e-4, "within_tolerance": True,
+                    "ranking_changes": 0, "ranking_unchanged": True, "identical": True, "passed": True}
+    near = compare_passes(a, [0.10 + 5e-5, 0.50 - 5e-5, 0.90])           # within tolerance, same order
+    assert near["passed"] and not near["identical"] and near["max_abs_diff"] == pytest.approx(5e-5)
+    far = compare_passes(a, [0.10, 0.50 + 2e-4, 0.90])                   # over tolerance
+    assert not far["passed"] and not far["within_tolerance"] and far["ranking_unchanged"]
+    assert compare_passes([], [])["passed"]
+
+
+def test_compare_passes_near_tie_swap_passes():
+    from scripts.score_nli import compare_passes
+    # rows 0 and 1 differ by 1e-5 (< 2 * tol) in pass 1 and swap in pass 2: numerical noise, ignored
+    r = compare_passes([0.50, 0.50 + 1e-5, 0.90], [0.50 + 1e-5, 0.50, 0.90])
+    assert r["passed"] and r["ranking_unchanged"] and r["ranking_changes"] == 0 and not r["identical"]
+    # just over 2 * tol apart counts; just under does not
+    assert compare_passes([0.50, 0.50 + 1.9e-4], [0.50 + 1.9e-4, 0.50])["ranking_changes"] == 0
+    assert compare_passes([0.50, 0.50 + 2.1e-4], [0.50 + 2.1e-4, 0.50])["ranking_changes"] == 1
+
+
+def test_compare_passes_swap_between_separated_rows_fails():
+    from scripts.score_nli import compare_passes
+    r = compare_passes([0.10, 0.50, 0.90], [0.50, 0.10, 0.90])            # rows 0 and 1 are 0.4 apart and swap
+    assert not r["passed"] and not r["ranking_unchanged"] and r["ranking_changes"] == 1
+
+
+def test_device_prefers_cuda(monkeypatch):
+    from src.train import get_device
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert get_device() == "cuda"
+
+
+def test_default_splits_are_ragtruth_val_test_and_clinical_val_test_full():
+    from scripts.score_nli import SPLITS, parse_args
+    assert parse_args([]).splits.split(",") == ["ragtruth_val", "ragtruth_test", "clinical_val", "clinical_test_full"]
+    assert SPLITS["ragtruth_test"] == ("general", "test.jsonl", "ragtruth")
+    assert SPLITS["clinical_test_full"] == ("clinical", "test_full.jsonl", None)
+
+
+def test_absolute_out_root_is_used(tmp_path, capsys):
+    """An absolute --out-root (e.g. /kaggle/working/...) is used as given: the overwrite guard sees the file there
+    and stops before any model is loaded."""
+    from scripts.score_nli import main as score_main
+    out_root = tmp_path / "kaggle" / "working" / "nli"
+    pred = out_root / "DeBERTa-v3-large-mnli-fever-anli-ling-wanli" / "predictions.jsonl"
+    pred.parent.mkdir(parents=True)
+    pred.write_text("")
+    assert score_main(["--out-root", str(out_root)]) == 1
+    assert str(pred) in capsys.readouterr().err
+
+
+def test_hypothesis_format_defaults_to_response():
+    from scripts.score_nli import parse_args
+    assert parse_args([]).hypothesis == "response"
+    assert parse_args(["--hypothesis", "question_response"]).hypothesis == "question_response"
+
+
+def test_determinism_check_and_records():
+    b = PairBuilder(FakeTokenizer())
+    rows = [_row("Aspirin gave pain relief.", CTX, gid="g1"), _row("The patient died suddenly at home.", CTX, 1, gid="g2")]
+    prepared = [prepare_row(r, b, False, 4, 64, 16) for r in rows]
+    det = determinism_check(prepared, FakeNLI(), b, 1, 2, "cpu")
+    assert det["n"] == 2 and det["max_abs_diff"] == 0.0 and det["passed"] and det["identical"]
+    res, _ = score_prepared(prepared, FakeNLI(), b, 1, 2, "cpu")
+    split = {"name": "clinical_test_full", "rows": rows, "idx": [5, 9], "keys": assign_row_keys(rows)}
+    recs = make_records(split, res)
+    assert [r["idx"] for r in recs] == [5, 9] and recs[1]["label"] == 1 and recs[0]["split"] == "clinical_test_full"
+    assert {"row_key", "prob", "sentence_support", "n_capped", "fell_back", "difficulty", "category"} <= set(recs[0])
+
+
+# ---- inspection: preamble-like sentences ----------------------------------------------------------
+
+def test_preamble_rules_match_the_definition():
+    from scripts.inspect_nli_inputs import preamble_rules
+    # "here is" mid-sentence no longer counts; the colon and the leading "Based on ..." do
+    assert preamble_rules("Based on the given passages, here is a brief answer to the question:") == \
+        ["ends_with_colon", "based_on"]
+    assert preamble_rules("BASED ON CONTEXT the drug works.") == ["based_on"]                 # case-insensitive
+    assert preamble_rules("  Based on provided information, it is safe.") == ["based_on"]      # leading spaces allowed
+    assert preamble_rules("Symptoms include the following:  ") == ["ends_with_colon"]
+    assert preamble_rules("The drug reduced mortality in adults.") == []
+    assert preamble_rules("Based on these passages, the drug works.") == []                   # "these" is not in the pattern
+
+
+def test_preamble_rules_anchored_with_word_boundaries():
+    from scripts.inspect_nli_inputs import preamble_rules
+    assert preamble_rules("Here is a summary of the trial findings.") == ["here_is"]           # leading "Here is"
+    assert preamble_rules("here are the main symptoms") == ["here_is"]
+    assert preamble_rules("There is a strong correlation between the two.") == []             # "there is"
+    assert preamble_rules("There are three trials in the review.") == []
+    assert preamble_rules("The method we present here is able to purify complexes.") == []    # mid-sentence "here is"
+    assert preamble_rules("The answer, based on the context, is yes.") == []                  # mid-sentence "based on"
+    assert preamble_rules("Based on contextual cues, the drug works.") == []                  # \b: "contextual"
+    assert preamble_rules("Hereafter is the plan.") == []
+
+
+def test_preamble_stats_counts_rows_and_sentences():          # needs bodies (split_response_sentences)
+    from scripts.inspect_nli_inputs import preamble_stats
+    rows = [{"answer": "Based on the given passages, here is the answer:\n* The drug reduced mortality in adults."},
+            {"answer": "The drug reduced mortality in adults. Side effects were mild overall."},
+            {"answer": "Here are the findings of the trial. The drug works well."}]
+    ps = preamble_stats(rows)
+    assert ps["rows"] == 3 and ps["rows_with"] == 2 and ps["sentences"] == 6
+    assert [rules for _, rules in ps["matches"]] == [["ends_with_colon", "based_on"], ["here_is"]]
+
+
+# ---- inspection: token tables (fake tokenizer; needs bodies) ------------------------------------
+
+def test_context_sentences_split_on_newlines_and_never_merged():
+    from scripts.inspect_nli_inputs import split_context_sentences
+    text = "Intro line without a full stop\n---\n\nYes. The drug works well in adults.\n  * Second bullet item here"
+    assert split_context_sentences(text) == ["Intro line without a full stop", "Yes.",
+                                             "The drug works well in adults.", "* Second bullet item here"]
+
+
+def test_context_sentence_stats_counts_distinct_contexts():
+    from scripts.inspect_nli_inputs import context_sentence_stats
+    b = PairBuilder(FakeTokenizer())
+    shared = "One two three four five. Six seven."
+    rows = [_row("a b c.", shared), _row("d e f.", shared), _row("g h i.", "Alpha beta gamma delta epsilon zeta eta.")]
+    cs = context_sentence_stats(rows, b, limit=4)
+    assert cs == {"rows": 3, "contexts": 2, "sentences": 3, "over": 2, "max": 7}   # 5, 2 (shared once) and 7 tokens
+
+
+# Word-level ids, cap 6, max_length 18, stride 2; CTX has 11 tokens, so budget = 18 - len(hyp) - 3.
+_FMT_ROWS = [
+    _row("Aspirin gave pain relief.", CTX, query="Did aspirin help the patient at all?"),  # q 7 + s 4: q shortened to 2
+    _row("x0 x1 x2 x3 x4 x5 x6 x7.", CTX),                         # q 3 + s 8: sentence cut to 6, q dropped
+    _row("Aspirin was fine.", CTX, query="Why?"),                  # q 1 + s 3: fits
+    _row("Aspirin gave pain relief.", CTX, task="summary"),        # never a question
+    _row("Aspirin gave the patient pain relief.", CTX),            # q 3 + s 6: no room left, q dropped, s whole
+]
+
+
+def test_format_stats_response_only():
+    from scripts.inspect_nli_inputs import format_stats
+    fs = format_stats(_FMT_ROWS, PairBuilder(FakeTokenizer()), False, stride=2, hyp_cap=6, max_length=18)
+    assert {k: fs[k] for k in ("hypotheses", "capped", "with_question", "q_shortened", "q_dropped",
+                               "sentence_cut", "max_before_cap")} == \
+        {"hypotheses": 5, "capped": 1, "with_question": 0, "q_shortened": 0, "q_dropped": 0,
+         "sentence_cut": 1, "max_before_cap": 8}
+    assert fs["windows"] == [1, 2, 1, 1, 2]           # hyp 4, 6, 3, 4, 6 -> budget 11, 9, 12, 11, 9 for 11 tokens
+    assert fs["pairs"] == 7
+
+
+def test_format_stats_question_response():
+    from scripts.inspect_nli_inputs import format_stats
+    fs = format_stats(_FMT_ROWS, PairBuilder(FakeTokenizer()), True, stride=2, hyp_cap=6, max_length=18)
+    assert {k: fs[k] for k in ("hypotheses", "capped", "with_question", "q_shortened", "q_dropped",
+                               "sentence_cut", "max_before_cap")} == \
+        {"hypotheses": 5, "capped": 3, "with_question": 4, "q_shortened": 1, "q_dropped": 2,
+         "sentence_cut": 1, "max_before_cap": 11}
+    assert fs["windows"] == [2, 2, 1, 1, 2]           # hyp 6, 6, 4, 4, 6
+    assert fs["pairs"] == 8
+
+
+def test_token_tables_print_without_labels(capsys):
+    from scripts.inspect_nli_inputs import print_token_tables
+    rows = [dict(r, label=None) for r in _FMT_ROWS]   # a label is never needed
+    groups = {("ragbench_pubmedqa", "qa"): [r for r in rows if r["task"] == "qa"],
+              ("ragbench_pubmedqa", "summary"): [r for r in rows if r["task"] == "summary"]}
+    print_token_tables(groups, PairBuilder(FakeTokenizer()), stride=2, hyp_cap=6)
+    out = capsys.readouterr().out
+    assert "== 1. Context sentences" in out and "== 2. Hypotheses" in out and "== 3. Windows per row" in out
+    assert "| ragbench_pubmedqa | qa | question_response |" in out
+    assert "| ragbench_pubmedqa | summary | question_response |" not in out       # summary: response only
+
+
+# ---- inspection: preamble step (needs bodies) ---------------------------------------------------
+
+def test_normalize_stats_counts_affected_rows():
+    from scripts.inspect_nli_inputs import normalize_stats
+    rows = [{"answer": _PREAMBLE_ANSWER},
+            {"answer": "The drug reduced mortality in adults. Side effects were mild overall."},
+            {"answer": "Based on the context, the drug works well in adults."}]
+    ns = normalize_stats(rows)
+    assert (ns["rows"], ns["affected"], ns["stripped"], ns["merged"]) == (3, 2, 2, 1)
+    assert ns["examples"][1] == (["Based on the context, the drug works well in adults."],
+                                 ["the drug works well in adults."])
+
+
+def test_normalize_section_prints_table_and_seeded_examples(capsys):
+    from scripts.inspect_nli_inputs import print_normalize_section
+    by_source = {"ragtruth": [{"answer": _PREAMBLE_ANSWER}, {"answer": "The drug works well in adults."}],
+                 "medhallu": [{"answer": "The drug works well in adults."}]}
+    print_normalize_section(by_source, seed=0)
+    out = capsys.readouterr().out
+    assert "| ragtruth | 2 | 1 | 50.0% | 1 | 1 |" in out and "| medhallu | 1 | 0 | 0.0% | 0 | 0 |" in out
+    assert "-- ragtruth: 1 seeded examples" in out and "-- medhallu" not in out
+    assert "'here are the facts: * The patient took aspirin daily'" in out
+    print_normalize_section(by_source, seed=0)
+    assert capsys.readouterr().out == out                                   # seeded: same output twice
+
+
+# ---- M5 summary shape (runs now) ---------------------------------------------------------------
+
+def _m(prev=0.2, pr=0.5):
+    blk = lambda t: {"threshold": t, "precision": 0.5, "recall": 0.5, "f1": 0.4, "faithful_precision": 0.9}
+    return {"n": 10, "n_pos": int(10 * prev), "prevalence": prev, "pr_auc": pr, "roc_auc": 0.6,
+            "at_ragtruth_thr": blk(0.3), "at_clinical_thr": blk(0.2)}
+
+
+def test_m5_summary_is_found_by_mvp_check(tmp_path, monkeypatch):
+    srcs = ["ragbench_pubmedqa", "ragbench_covidqa", "medhallu"]
+    metrics = {"model": "x/y", "hypothesis": "response", "ragtruth_test": _m(),
+               "test_full": {s: _m() for s in srcs}, "test_clean": {s: _m() for s in srcs}}
+    summ = build_m5_summary(metrics, "results/nli/y/metrics.json")
+    assert "per_source" not in summ
+    found = {mvp.clinical_key(k) or k.lower() for k in mvp.test_block(summ)}
+    assert found == {"ragtruth", *mvp.CLINICAL_KEYS}
+    (tmp_path / "y.json").write_text(json.dumps(summ))
+    monkeypatch.setattr(mvp, "NLI_DIR", tmp_path)
+    mvp.check_m5()
+    assert mvp.RESULTS["M5"] == "PASS"
+
+
+# ---- report end to end on toy predictions (runs now: uses src/rq1.py, not the NLI templates) -------------
+
+SRCS = ["ragbench_pubmedqa", "ragbench_covidqa", "medhallu"]
+
+
+def _write_jsonl(path, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+def _toy_rows(split, sources, n, tasks=("qa",)):
+    rows = []
+    for s in sources:
+        for t in tasks:
+            for i in range(n):
+                y = int(i % 2 == 0) if s == "medhallu" else int(i % 4 == 0)
+                rows.append({"answer": f"{split}-{s}-{t}-{i}", "label": y, "source": s, "task": t,
+                             "group_id": f"{s}-{split}-{t}-g{i}"})
+    return rows
+
+
+def _make_toy(tmp_path, limit=None):
+    rng = np.random.default_rng(0)
+    data, nli = tmp_path / "clinical", tmp_path / "nli"
+    splits = {"ragtruth_val": _toy_rows("rv", ["ragtruth"], 30, ("qa", "summary")),
+              "ragtruth_test": _toy_rows("rt", ["ragtruth"], 40, ("qa", "summary")),
+              "clinical_val": _toy_rows("cv", SRCS, 40),
+              "clinical_test_full": _toy_rows("cf", SRCS, 48)}
+    clean = [r for i, r in enumerate(splits["clinical_test_full"]) if i % 3 != 0]
+    _write_jsonl(data / "test.jsonl", clean)
+    preds = []
+    for split, rows in splits.items():
+        for i, (r, k) in enumerate(zip(rows, assign_row_keys(rows))):
+            preds.append({"split": split, "idx": i, "source": r["source"], "task": r["task"], "group_id": r["group_id"],
+                          "label": r["label"], "prob": float(np.clip(rng.normal(0.4 + 0.3 * r["label"], 0.15), 0, 1)),
+                          "row_key": k, "difficulty": None, "category": None, "n_sentences": 1, "n_windows": 1,
+                          "fell_back": False, "n_capped": 0, "sentence_support": [0.5]})
+    _write_jsonl(nli / "toy-model" / "predictions.jsonl", preds)
+    scoring = {"model": "org/toy-model", "revision": "abc123", "hypothesis": "response", "include_question": False,
+               "max_length": 512, "stride": 128, "hyp_cap": 256, "min_words": 3,
+               "splitter": {"name": "pysbd", "version": "0.3.4"}, "device": "cpu", "device_name": "cpu",
+               "precision": {"param_dtype": "torch.float32", "autocast": False}, "git_sha": "abc", "git_dirty": False,
+               "limit": limit, "torch_version": "t", "transformers_version": "tf", "pairs_scored": 123,
+               "data_files": {s: {"path": s, "rows_expected": len(r)} for s, r in splits.items()},
+               "counts": {"ragtruth_test": {"ragtruth": {"rows": 80, "fallback_rows": 1, "capped_hypotheses": 2}}},
+               "determinism": {"n": 20, "max_abs_diff": 3e-6, "tolerance": 1e-4, "within_tolerance": True,
+                               "ranking_unchanged": True, "identical": False, "passed": True}}
+    (nli / "toy-model" / "scoring.json").write_text(json.dumps(scoring))
+    return data, nli
+
+
+def test_report_end_to_end(tmp_path, monkeypatch):
+    data, nli = _make_toy(tmp_path)
+    md = tmp_path / "nli_baseline.md"
+    rc = report_main(["--nli-root", str(nli), "--model-dir", "toy-model", "--data-dir", str(data), "--out-md", str(md)])
+    assert rc == 0
+    m = json.loads((nli / "toy-model" / "metrics.json").read_text())
+    assert m["ragtruth_test"]["n"] == 80 and set(m["ragtruth_test_by_task"]) == {"qa", "summary"}
+    assert set(m["test_full"]) == set(SRCS) and m["test_full"]["ragbench_pubmedqa"]["n"] == 48
+    assert m["test_clean"]["ragbench_pubmedqa"]["n"] == 32
+    a = m["thresholds"]["ragtruth_val"]["threshold"]
+    assert m["ragtruth_test"]["at_ragtruth_thr"]["threshold"] == m["ragtruth_test"]["at_clinical_thr"]["threshold"] == a
+    assert all(m["test_full"][s]["at_ragtruth_thr"]["threshold"] == a for s in SRCS)          # (a) on every source
+    assert m["thresholds"]["clinical_val"]["ragbench_covidqa"]["tuned_on"] == ["ragbench_covidqa", "ragbench_pubmedqa"]
+    # M5 summary next to the folder, found by mvp_check
+    monkeypatch.setattr(mvp, "NLI_DIR", nli)
+    mvp.check_m5()
+    assert mvp.RESULTS["M5"] == "PASS"
+    text = md.read_text()
+    for heading in ("## Run", "## Thresholds", "## RAGTruth test", "## Clinical test: full", "## Clinical test: clean",
+                    "## Notes"):
+        assert heading in text
+    assert "| RAGTruth QA |" in text and "| RAGTruth Summary |" in text
+    assert text.count("| F1 if every row flagged |") == 3
+    assert "20 rows, max abs diff 3.0e-06 (tol 1e-04, ranking unchanged True; PASS)" in text
+    assert "—" not in text                 # no em dashes in reports
+
+
+def test_report_refuses_smoke_predictions(tmp_path):
+    data, nli = _make_toy(tmp_path, limit=100)
+    with pytest.raises(ValueError):
+        report_main(["--nli-root", str(nli), "--model-dir", "toy-model", "--data-dir", str(data),
+                     "--out-md", str(tmp_path / "x.md")])

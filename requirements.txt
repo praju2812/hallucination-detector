@@ -5,3 +5,4 @@ scikit-learn>=1.3
 numpy>=1.24
 pyyaml>=6.0
 pytest>=7
+pysbd==0.3.4   # Phase 6 NLI baseline: response sentence splitting (decision, 19 Nov)

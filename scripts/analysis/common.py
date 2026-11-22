@@ -1,7 +1,7 @@
 """Shared plumbing for the read-only supervisor analysis (scripts/analysis/).
 
 Nothing here changes data, configs or the pipeline. Clinical data logic is not reimplemented here: Part B and the
-clinical half of Part A import Prajakta's functions from scripts/build_clinical.py, pinned to BUILD_CLINICAL_SHA.
+clinical half of Part A import functions from scripts/build_clinical.py, pinned to BUILD_CLINICAL_SHA.
 """
 
 from __future__ import annotations

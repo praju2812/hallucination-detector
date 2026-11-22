@@ -1,0 +1,80 @@
+{
+  "model": "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+  "method": "nli_zero_shot",
+  "hypothesis": "response",
+  "test": {
+    "ragtruth": {
+      "pr_auc": 0.3919152991020327,
+      "roc_auc": 0.7185663396492088,
+      "f1": 0.43607954545454547,
+      "f1_at_clinical_thr": 0.43607954545454547,
+      "threshold": 0.3,
+      "prevalence": 0.20222222222222222,
+      "n": 1800,
+      "n_pos": 364
+    },
+    "ragbench_pubmedqa": {
+      "pr_auc": 0.3968442156460264,
+      "roc_auc": 0.6310748625687157,
+      "f1": 0.48215035699286013,
+      "f1_at_clinical_thr": 0.4645161290322581,
+      "threshold": 0.3,
+      "prevalence": 0.29591836734693877,
+      "n": 2450,
+      "n_pos": 725
+    },
+    "ragbench_covidqa": {
+      "pr_auc": 0.2703199237844752,
+      "roc_auc": 0.7251331599157687,
+      "f1": 0.4166666666666667,
+      "f1_at_clinical_thr": 0.2564102564102564,
+      "threshold": 0.3,
+      "prevalence": 0.15853658536585366,
+      "n": 246,
+      "n_pos": 39
+    },
+    "medhallu": {
+      "pr_auc": 0.5990016155409611,
+      "roc_auc": 0.639391,
+      "f1": 0.6966789667896679,
+      "f1_at_clinical_thr": 0.6972408650260999,
+      "threshold": 0.3,
+      "prevalence": 0.5,
+      "n": 2000,
+      "n_pos": 1000
+    }
+  },
+  "test_clean": {
+    "ragbench_pubmedqa": {
+      "pr_auc": 0.41163896095811636,
+      "roc_auc": 0.6244038155802862,
+      "f1": 0.4669260700389105,
+      "f1_at_clinical_thr": 0.4380952380952381,
+      "threshold": 0.3,
+      "prevalence": 0.2835249042145594,
+      "n": 522,
+      "n_pos": 148
+    },
+    "ragbench_covidqa": {
+      "pr_auc": 0.3006266412230057,
+      "roc_auc": 0.7064705882352942,
+      "f1": 0.42105263157894735,
+      "f1_at_clinical_thr": 0.21621621621621623,
+      "threshold": 0.3,
+      "prevalence": 0.19047619047619047,
+      "n": 105,
+      "n_pos": 20
+    },
+    "medhallu": {
+      "pr_auc": 0.598924804436515,
+      "roc_auc": 0.6392097803509215,
+      "f1": 0.6967122275581825,
+      "f1_at_clinical_thr": 0.6972751026502426,
+      "threshold": 0.3,
+      "prevalence": 0.5,
+      "n": 1998,
+      "n_pos": 999
+    }
+  },
+  "details": "results/nli/DeBERTa-v3-large-mnli-fever-anli-ling-wanli/metrics.json"
+}
