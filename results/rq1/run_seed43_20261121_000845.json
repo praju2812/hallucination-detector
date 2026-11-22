@@ -1,0 +1,65 @@
+{
+  "seed": 43,
+  "experiment": "G",
+  "truncation": "fit_first",
+  "run": "run_seed43_20261121_000845",
+  "test": {
+    "ragbench_pubmedqa": {
+      "pr_auc": 0.3679871297490829,
+      "roc_auc": 0.5649095452273862,
+      "f1": 0.40582838640043173,
+      "threshold": 0.35,
+      "prevalence": 0.29591836734693877,
+      "n": 2450,
+      "n_pos": 725
+    },
+    "ragbench_covidqa": {
+      "pr_auc": 0.2558921830090717,
+      "roc_auc": 0.6062182583921714,
+      "f1": 0.26356589147286824,
+      "threshold": 0.35,
+      "prevalence": 0.15853658536585366,
+      "n": 246,
+      "n_pos": 39
+    },
+    "medhallu": {
+      "pr_auc": 0.633940610702972,
+      "roc_auc": 0.6192225,
+      "f1": 0.6254859611231102,
+      "threshold": 0.35,
+      "prevalence": 0.5,
+      "n": 2000,
+      "n_pos": 1000
+    }
+  },
+  "test_clean": {
+    "ragbench_pubmedqa": {
+      "pr_auc": 0.3716495712587755,
+      "roc_auc": 0.5906019656019655,
+      "f1": 0.4213197969543147,
+      "threshold": 0.35,
+      "prevalence": 0.2835249042145594,
+      "n": 522,
+      "n_pos": 148
+    },
+    "ragbench_covidqa": {
+      "pr_auc": 0.35844553849531596,
+      "roc_auc": 0.638235294117647,
+      "f1": 0.3103448275862069,
+      "threshold": 0.35,
+      "prevalence": 0.19047619047619047,
+      "n": 105,
+      "n_pos": 20
+    },
+    "medhallu": {
+      "pr_auc": 0.633933874207673,
+      "roc_auc": 0.6191501812122433,
+      "f1": 0.6254325259515571,
+      "threshold": 0.35,
+      "prevalence": 0.5,
+      "n": 1998,
+      "n_pos": 999
+    }
+  },
+  "details": "results/rq1/run_seed43_20261121_000845/metrics.json"
+}
