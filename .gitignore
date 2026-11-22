@@ -234,3 +234,6 @@ runs/**/*.pt
 
 # Phase 4: smoke scoring output, never reported
 results/rq1_smoke/
+
+# Phase 6: NLI smoke output, never reported (mvp_check M5 reads results/nli/*.json)
+results/nli_smoke/

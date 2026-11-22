@@ -50,6 +50,23 @@ def test_flags_default_points_at_repo_results():
     assert a_lengths.DEFAULT_FLAGS == str(REPO / "results" / "truncation_flags_v2.jsonl")
 
 
+def test_a5a_response_cut_follows_fit_first():
+    """3 special tokens, resp_max 384, window 1024: available = 1021 - query part."""
+    import numpy as np
+    rows = [  # (query part, context, response)
+        (10, 500, 300),    # fits: nothing cut
+        (10, 100, 500),    # fits, response > resp_max: NOT cut under fit_first (legacy cut it to 384)
+        (10, 900, 500),    # overflow, long context: response cut to 384
+        (10, 200, 900),    # overflow, short context: response cut to 1011 - 200 = 811 (> resp_max)
+        (10, 1000, 300),   # overflow, response <= resp_max: only the context is cut
+        (1100, 50, 50),    # query part alone over the budget: refused
+    ]
+    q, c, r = (np.array(x) for x in zip(*rows))
+    assert a_lengths.response_cut_fit_first(q, c, r, 3, 384, 1024) == (2, 1)
+    # a part left with no tokens (fit_first_lengths raises) is refused, not cut: available 380 < resp_max
+    assert a_lengths.response_cut_fit_first(np.array([17]), np.array([50]), np.array([500]), 3, 384, 400) == (0, 1)
+
+
 @pytest.mark.parametrize("module", [a_lengths, c_cue])
 def test_scripts_refuse_frozen_out_dir_before_any_work(module, monkeypatch):
     """--out-dir results/analysis_2026-11-11 stops at argument checking, before any data is read."""

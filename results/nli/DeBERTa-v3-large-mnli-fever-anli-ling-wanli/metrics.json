@@ -1,0 +1,448 @@
+{
+  "model": "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+  "revision": "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7",
+  "hypothesis": "response",
+  "thresholds": {
+    "ragtruth_val": {
+      "threshold": 0.3,
+      "tuned_on": [
+        "ragtruth"
+      ],
+      "n": 984,
+      "n_pos": 296
+    },
+    "clinical_val": {
+      "medhallu": {
+        "threshold": 0.49999999999999994,
+        "tuned_on": [
+          "medhallu"
+        ],
+        "n": 1738,
+        "n_pos": 869
+      },
+      "ragbench_covidqa": {
+        "threshold": 0.65,
+        "tuned_on": [
+          "ragbench_covidqa",
+          "ragbench_pubmedqa"
+        ],
+        "n": 614,
+        "n_pos": 162
+      },
+      "ragbench_pubmedqa": {
+        "threshold": 0.65,
+        "tuned_on": [
+          "ragbench_pubmedqa"
+        ],
+        "n": 526,
+        "n_pos": 145
+      }
+    }
+  },
+  "ragtruth_test": {
+    "n": 1800,
+    "n_pos": 364,
+    "prevalence": 0.20222222222222222,
+    "pr_auc": 0.3919152991020327,
+    "roc_auc": 0.7185663396492088,
+    "at_ragtruth_thr": {
+      "threshold": 0.3,
+      "precision": 0.2940613026819923,
+      "recall": 0.8434065934065934,
+      "f1": 0.43607954545454547,
+      "faithful_precision": 0.9246031746031746
+    },
+    "at_clinical_thr": {
+      "threshold": 0.3,
+      "precision": 0.2940613026819923,
+      "recall": 0.8434065934065934,
+      "f1": 0.43607954545454547,
+      "faithful_precision": 0.9246031746031746
+    }
+  },
+  "ragtruth_test_by_task": {
+    "qa": {
+      "n": 900,
+      "n_pos": 160,
+      "prevalence": 0.17777777777777778,
+      "pr_auc": 0.34914851484987736,
+      "roc_auc": 0.7087626689189189,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.24125874125874125,
+        "recall": 0.8625,
+        "f1": 0.3770491803278688,
+        "faithful_precision": 0.9329268292682927
+      },
+      "at_clinical_thr": {
+        "threshold": 0.3,
+        "precision": 0.24125874125874125,
+        "recall": 0.8625,
+        "f1": 0.3770491803278688,
+        "faithful_precision": 0.9329268292682927
+      }
+    },
+    "summary": {
+      "n": 900,
+      "n_pos": 204,
+      "prevalence": 0.22666666666666666,
+      "pr_auc": 0.5882261453676324,
+      "roc_auc": 0.7954065246788372,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.3580508474576271,
+        "recall": 0.8284313725490197,
+        "f1": 0.5,
+        "faithful_precision": 0.9182242990654206
+      },
+      "at_clinical_thr": {
+        "threshold": 0.3,
+        "precision": 0.3580508474576271,
+        "recall": 0.8284313725490197,
+        "f1": 0.5,
+        "faithful_precision": 0.9182242990654206
+      }
+    }
+  },
+  "test_full": {
+    "ragbench_pubmedqa": {
+      "n": 2450,
+      "n_pos": 725,
+      "prevalence": 0.29591836734693877,
+      "pr_auc": 0.3968442156460264,
+      "roc_auc": 0.6310748625687157,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.3466183574879227,
+        "recall": 0.7917241379310345,
+        "f1": 0.48215035699286013,
+        "faithful_precision": 0.809823677581864
+      },
+      "at_clinical_thr": {
+        "threshold": 0.65,
+        "precision": 0.3627906976744186,
+        "recall": 0.6455172413793103,
+        "f1": 0.4645161290322581,
+        "faithful_precision": 0.778448275862069
+      }
+    },
+    "ragbench_covidqa": {
+      "n": 246,
+      "n_pos": 39,
+      "prevalence": 0.15853658536585366,
+      "pr_auc": 0.2703199237844752,
+      "roc_auc": 0.7251331599157687,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.30864197530864196,
+        "recall": 0.6410256410256411,
+        "f1": 0.4166666666666667,
+        "faithful_precision": 0.9151515151515152
+      },
+      "at_clinical_thr": {
+        "threshold": 0.65,
+        "precision": 0.2564102564102564,
+        "recall": 0.2564102564102564,
+        "f1": 0.2564102564102564,
+        "faithful_precision": 0.8599033816425121
+      }
+    },
+    "medhallu": {
+      "n": 2000,
+      "n_pos": 1000,
+      "prevalence": 0.5,
+      "pr_auc": 0.5990016155409611,
+      "roc_auc": 0.639391,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.552046783625731,
+        "recall": 0.944,
+        "f1": 0.6966789667896679,
+        "faithful_precision": 0.8068965517241379
+      },
+      "at_clinical_thr": {
+        "threshold": 0.49999999999999994,
+        "precision": 0.5558858501783591,
+        "recall": 0.935,
+        "f1": 0.6972408650260999,
+        "faithful_precision": 0.7955974842767296
+      }
+    }
+  },
+  "test_clean": {
+    "ragbench_pubmedqa": {
+      "n": 522,
+      "n_pos": 148,
+      "prevalence": 0.2835249042145594,
+      "pr_auc": 0.41163896095811636,
+      "roc_auc": 0.6244038155802862,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.32786885245901637,
+        "recall": 0.8108108108108109,
+        "f1": 0.4669260700389105,
+        "faithful_precision": 0.8205128205128205
+      },
+      "at_clinical_thr": {
+        "threshold": 0.65,
+        "precision": 0.3382352941176471,
+        "recall": 0.6216216216216216,
+        "f1": 0.4380952380952381,
+        "faithful_precision": 0.776
+      }
+    },
+    "ragbench_covidqa": {
+      "n": 105,
+      "n_pos": 20,
+      "prevalence": 0.19047619047619047,
+      "pr_auc": 0.3006266412230057,
+      "roc_auc": 0.7064705882352942,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.32432432432432434,
+        "recall": 0.6,
+        "f1": 0.42105263157894735,
+        "faithful_precision": 0.8823529411764706
+      },
+      "at_clinical_thr": {
+        "threshold": 0.65,
+        "precision": 0.23529411764705882,
+        "recall": 0.2,
+        "f1": 0.21621621621621623,
+        "faithful_precision": 0.8181818181818182
+      }
+    },
+    "medhallu": {
+      "n": 1998,
+      "n_pos": 999,
+      "prevalence": 0.5,
+      "pr_auc": 0.598924804436515,
+      "roc_auc": 0.6392097803509215,
+      "at_ragtruth_thr": {
+        "threshold": 0.3,
+        "precision": 0.5521077283372365,
+        "recall": 0.943943943943944,
+        "f1": 0.6967122275581825,
+        "faithful_precision": 0.8068965517241379
+      },
+      "at_clinical_thr": {
+        "threshold": 0.49999999999999994,
+        "precision": 0.555952380952381,
+        "recall": 0.934934934934935,
+        "f1": 0.6972751026502426,
+        "faithful_precision": 0.7955974842767296
+      }
+    }
+  },
+  "scoring": {
+    "model": "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+    "model_dir": "DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+    "revision": "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7",
+    "revision_requested": "b3546ea6b0346eb6f8d5d68b13c7dc6d0376b3d7",
+    "id2label": {
+      "0": "entailment",
+      "1": "neutral",
+      "2": "contradiction"
+    },
+    "entailment_index": 0,
+    "type_vocab_size": 0,
+    "hypothesis": "response",
+    "include_question": false,
+    "max_length": 512,
+    "stride": 128,
+    "hyp_cap": 256,
+    "min_words": 3,
+    "splitter": {
+      "name": "pysbd",
+      "version": "0.3.4",
+      "newline_split_first": true
+    },
+    "preambles": {
+      "attribution_prefix": "^based on (the )?(given |provided )?(passages|context|information)[^,]*,\\s*",
+      "flags": "IGNORECASE",
+      "colon_lines": "merged into the next sentence (the previous one if last)",
+      "counts": "counts[split][source].stripped_prefixes / merged_colon_lines"
+    },
+    "pair_layout": {
+      "layout": "[CLS] premise [SEP] hypothesis [SEP]",
+      "n_special": 3,
+      "keys_compared": [
+        "attention_mask",
+        "input_ids",
+        "token_type_ids"
+      ],
+      "token_type_ids": true,
+      "verified": true
+    },
+    "aggregation": "score = 1 - min over sentences of max over windows of P(entailment)",
+    "device": "cuda",
+    "device_name": "Tesla T4",
+    "precision": {
+      "param_dtype": "torch.float32",
+      "autocast": false
+    },
+    "torch_version": "2.11.0+cu130",
+    "transformers_version": "5.22.2",
+    "git_sha": "f63ebec",
+    "git_dirty": false,
+    "batch_size": 16,
+    "limit": null,
+    "data_files": {
+      "ragtruth_val": {
+        "path": "data/unified_v2/val.jsonl",
+        "sha1": "7097a7b6316e42460672df9ded06a3372311a8da",
+        "source_filter": "ragtruth",
+        "rows_in_file": 2784,
+        "rows_expected": 984
+      },
+      "ragtruth_test": {
+        "path": "data/unified_v2/test.jsonl",
+        "sha1": "058075f8fb65d233a5c5883a7f72eb73eb7bd966",
+        "source_filter": "ragtruth",
+        "rows_in_file": 3800,
+        "rows_expected": 1800
+      },
+      "clinical_val": {
+        "path": "data/clinical/val.jsonl",
+        "sha1": "92fe32ae2a2dc75117fb8839b8b6027f71e41f32",
+        "source_filter": null,
+        "rows_in_file": 2352,
+        "rows_expected": 2352
+      },
+      "clinical_test_full": {
+        "path": "data/clinical/test_full.jsonl",
+        "sha1": "154f307ca8a9c7b9d8009d9233e9f4de5909d02e",
+        "source_filter": null,
+        "rows_in_file": 4696,
+        "rows_expected": 4696
+      }
+    },
+    "counts": {
+      "ragtruth_val": {
+        "ragtruth": {
+          "rows": 984,
+          "sentences": 5673,
+          "pairs": 8754,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 263,
+          "merged_colon_lines": 474
+        }
+      },
+      "ragtruth_test": {
+        "ragtruth": {
+          "rows": 1800,
+          "sentences": 9691,
+          "pairs": 16045,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 491,
+          "merged_colon_lines": 740
+        }
+      },
+      "clinical_val": {
+        "ragbench_pubmedqa": {
+          "rows": 526,
+          "sentences": 2738,
+          "pairs": 3420,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 367,
+          "merged_colon_lines": 332
+        },
+        "ragbench_covidqa": {
+          "rows": 88,
+          "sentences": 128,
+          "pairs": 196,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 1,
+          "merged_colon_lines": 4
+        },
+        "medhallu": {
+          "rows": 1738,
+          "sentences": 2674,
+          "pairs": 2761,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 0,
+          "merged_colon_lines": 1
+        }
+      },
+      "clinical_test_full": {
+        "ragbench_pubmedqa": {
+          "rows": 2450,
+          "sentences": 12465,
+          "pairs": 14737,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 1752,
+          "merged_colon_lines": 1579
+        },
+        "ragbench_covidqa": {
+          "rows": 246,
+          "sentences": 387,
+          "pairs": 589,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 5,
+          "merged_colon_lines": 2
+        },
+        "medhallu": {
+          "rows": 2000,
+          "sentences": 3172,
+          "pairs": 3254,
+          "fallback_rows": 0,
+          "capped_hypotheses": 0,
+          "stripped_prefixes": 0,
+          "merged_colon_lines": 0
+        }
+      }
+    },
+    "rows_scored": 9832,
+    "pairs_scored": 49756,
+    "pairs_full": 49756,
+    "load_seconds": 3.17,
+    "timing": {
+      "ragtruth_val": {
+        "rows": 984,
+        "pairs": 8754,
+        "seconds": 1033.74,
+        "pairs_per_s": 8.47
+      },
+      "ragtruth_test": {
+        "rows": 1800,
+        "pairs": 16045,
+        "seconds": 1967.55,
+        "pairs_per_s": 8.15
+      },
+      "clinical_val": {
+        "rows": 2352,
+        "pairs": 6377,
+        "seconds": 694.16,
+        "pairs_per_s": 9.19
+      },
+      "clinical_test_full": {
+        "rows": 4696,
+        "pairs": 18580,
+        "seconds": 2034.92,
+        "pairs_per_s": 9.13
+      }
+    },
+    "pairs_per_s": 8.68,
+    "eta_full_seconds": 5730.4,
+    "determinism": {
+      "n": 20,
+      "max_abs_diff": 0.0,
+      "tolerance": 0.0001,
+      "within_tolerance": true,
+      "ranking_changes": 0,
+      "ranking_unchanged": true,
+      "identical": true,
+      "passed": true
+    },
+    "scored_at": "2026-11-21T22:36:46+00:00"
+  },
+  "report_git_sha": "2764233",
+  "report_git_dirty": false
+}

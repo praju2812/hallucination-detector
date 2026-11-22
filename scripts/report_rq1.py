@@ -330,7 +330,7 @@ def format_report(all_m: list[dict]) -> str:
           f"Percentile bootstrap over group_id clusters, B = {b0['n_boot']}, RNG seed {b0['seed']}, thresholds fixed. "
           "Resamples with one class only are skipped.", ""] + bootstrap_table(all_m)
     L += ["", "## Selection check: full vs clean test", "",
-          "Clean test drops rows that share a question or an 8+ word passage with clinical TRAIN (hard rule 6). "
+          "Clean test drops rows that share a question or an 8+ word passage with clinical TRAIN. "
           "G never saw clinical train, so a difference here reflects which rows were removed, not leakage.", ""
           ] + selection_table(all_m)
     par = [m["scoring"].get("parity") for m in all_m]
