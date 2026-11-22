@@ -1,0 +1,60 @@
+# Phase 5 (RQ2): experiment C, trained on clinical train only.
+# Identical to configs/base.yaml except: experiment, data.train_path, data.val_path,
+# data.test_sets (replaces test_path) and train.select_sources. tests/test_configs.py checks this.
+#
+# Base config for the supervised hallucination detector.
+#
+# The whole point of this file: the model is niche-agnostic. To move from the
+# general training set to a niche evaluation set later, you change paths here,
+# not code. Train on RAGTruth/HaluEval now; drop in the niche dataset as a
+# held-out test set once your supervisor signs off on the topic.
+
+experiment: "C"       # G | C | G+C, recorded in config_snapshot.json
+
+model:
+  name: "answerdotai/ModernBERT-base"
+  max_length: 1024      # covers p95 (1006); truncates only ~5% instead of 21%
+  dropout: 0.1
+  resp_max: 384        # max length of the response (answer) to keep; rest is truncated
+  truncation: "fit_first"  # trim only on overflow (src/encoding.py); the only mode since 20 Nov 2026
+  
+# These files are the output of your Phase 1 (unified schema + group-based splits).
+# Point them at whatever you already built. Column names are parametrised below
+# so this loader matches your schema instead of forcing a schema on you.
+data:
+  train_path: "data/clinical/train.jsonl.gz"
+  # clinical val first, so its rows keep idx = file position in predictions.jsonl. RAGTruth/HaluEval val rows
+  # are scored for reporting only (decision D1); selection and the threshold use select_sources below.
+  val_path:
+    - "data/clinical/val.jsonl"
+    - "data/unified_v2/val.jsonl"
+  # every set is scored by the best checkpoint at the one threshold; clean clinical test is derived from
+  # test_full by row key in scripts/report_rq2.py (no test row scored twice)
+  test_sets:
+    test:      "data/unified_v2/test.jsonl"
+    test_full: "data/clinical/test_full.jsonl"
+  query_col:    "query"        # user question / instruction; goes in "Question: {query} Context: {context}"
+  context_col:  "context"      # retrieved passage(s) the answer is meant to be grounded in
+  response_col: "answer"     # the LLM answer being judged
+  label_col:    "label"        # 1 = hallucinated / unfaithful, 0 = faithful
+  dataset_col:  "source"       # e.g. "ragtruth" / "halueval" -> for per-source breakdown at eval
+
+train:
+  # train_sources: ["ragtruth"]
+  epochs: 2
+  batch_size: 8
+  lr: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  max_grad_norm: 1.0
+  # RAGTruth is ~30% positive, so the classes are imbalanced. pos_weight up-weights
+  # the positive (hallucinated) class in BCE. Start near (neg/pos); tune on val.
+  pos_weight: 2.3
+  seed: 42
+  eval_every_epoch: true
+  # Model selection metric. PR-AUC, not accuracy: accuracy is misleading under imbalance.
+  select_on: "pr_auc"
+  # Model selection AND the threshold: pooled RAGBench clean validation (one PR-AUC / one F1 grid over both).
+  # Never MedHallu. G keeps the default (["ragtruth"]).
+  select_sources: ["ragbench_pubmedqa", "ragbench_covidqa"]
+  out_dir: "checkpoints"
