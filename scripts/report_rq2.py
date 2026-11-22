@@ -35,7 +35,7 @@ import numpy as np
 from scripts.report_rq1 import BOOT_SOURCE, NAMES, SOURCES, compute_seed_metrics
 from src.metrics import best_threshold, ranking_metrics, thresholded_metrics
 from src.rq1 import assign_row_keys
-from src.train import get_git_dirty, get_git_sha, named_test_sets, resolved_training_values, select_sources_from_cfg
+from src.train import git_state, named_test_sets, resolved_training_values, select_sources_from_cfg
 from utils.io import read_jsonl
 
 EXPERIMENTS = ["G", "C", "G+C"]
@@ -183,7 +183,9 @@ def training_data(cfg: dict, cache: dict) -> dict:
     return {"files": files, "n": len(rows), "n_pos": sum(e["n_pos"] for e in per.values()), "per_source": per}
 
 
-def build_record(run: dict, rq1_root: str, clean_rows: list[dict], cache: dict, n_boot: int, boot_seed: int) -> dict:
+def build_record(run: dict, rq1_root: str, clean_rows: list[dict], cache: dict, n_boot: int, boot_seed: int,
+                 report_git: dict) -> dict:
+    """report_git: {"report_git_sha", "report_git_dirty"}, read once at the start of main()."""
     name, snap, metrics = run["name"], run["snap"], run["metrics"]
     cfg, exp, seed = snap["config"], snap["experiment"], snap["seed"]
     preds = read_jsonl(run["preds_path"])
@@ -214,7 +216,7 @@ def build_record(run: dict, rq1_root: str, clean_rows: list[dict], cache: dict, 
                    "git_dirty": snap.get("git_dirty"), "device_name": snap.get("device_name"),
                    "predictions": run["preds_path"]}
         m = compute_seed_metrics({"run": name, "preds": keep, "phase2": metrics, "scoring": scoring},
-                                 clean_rows, n_boot, boot_seed)
+                                 clean_rows, n_boot, boot_seed, report_git=report_git)
         clinical_from = run["preds_path"]
 
     td = training_data(cfg, cache)
@@ -237,8 +239,7 @@ def build_record(run: dict, rq1_root: str, clean_rows: list[dict], cache: dict, 
         "covidqa_bootstrap": m["covidqa_bootstrap"],
         "n_duplicate_rows_test_full": m["n_duplicate_rows_test_full"],
         "clinical_metrics_from": clinical_from,
-        "report_git_sha": get_git_sha(),
-        "report_git_dirty": get_git_dirty(),
+        **report_git,
     })
 
 
@@ -433,6 +434,9 @@ def main(argv=None) -> int:
     ap.add_argument("--n-boot", type=int, default=2000)
     ap.add_argument("--boot-seed", type=int, default=0)
     args = ap.parse_args(argv)
+    # git read once, before any output is written; every record carries this one reading
+    g = git_state()
+    report_git = {"report_git_sha": g["git_sha"], "report_git_dirty": g["git_dirty"]}
 
     runs = load_runs(args.runs_root)
     if not runs:
@@ -444,7 +448,7 @@ def main(argv=None) -> int:
     cache = {}
     records = []
     for r in runs:
-        rec = build_record(r, args.rq1_root, clean_rows, cache, args.n_boot, args.boot_seed)
+        rec = build_record(r, args.rq1_root, clean_rows, cache, args.n_boot, args.boot_seed, report_git)
         records.append(rec)
         print(f"  {r['name']}: {rec['experiment']} seed {rec['seed']}")
     by_exp = {e: [rec for rec in records if rec["experiment"] == e] for e in EXPERIMENTS}

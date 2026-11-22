@@ -127,7 +127,8 @@ def toy(tmp_path):
                 p.update(row_key=k, difficulty=r.get("difficulty"), category=r.get("category"))
         rq1_m = compute_seed_metrics({"run": name, "preds": cv + cf, "phase2": gm,
                                       "scoring": {"seed": seed, "experiment": "G", "truncation": "fit_first"}},
-                                     rows["clin_clean"], n_boot=30)
+                                     rows["clin_clean"], n_boot=30,
+                                     report_git={"report_git_sha": "abc1234", "report_git_dirty": False})
         os.makedirs(rq1 / name)
         (rq1 / name / "metrics.json").write_text(json.dumps(rq1_m))
 

@@ -33,7 +33,7 @@ from torch.utils.data import DataLoader
 from src.data import HallucinationDataset
 from src.encoding import Collator, build_tokenizer, truncation_mode
 from src.rq1 import assign_row_keys, load_g_checkpoint
-from src.train import evaluate, get_device, get_device_name, get_git_dirty, get_git_sha, prediction_records
+from src.train import evaluate, get_device, get_device_name, git_state, prediction_records
 from utils.io import read_jsonl, write_jsonl
 
 CLINICAL_SPLITS = {"val": "val.jsonl", "test_full": "test_full.jsonl"}
@@ -172,7 +172,9 @@ def main(argv=None) -> int:
 
     device = args.device or get_device()
     ckpt = os.path.join(run_dir, "best.pt")
-    print(f"run {run_name}  device {device} ({get_device_name()})  git {get_git_sha()} dirty={get_git_dirty()}")
+    # git read once, before predictions.jsonl is (over)written; scoring.json records this reading
+    git = git_state()
+    print(f"run {run_name}  device {device} ({get_device_name()})  git {git['git_sha']} dirty={git['git_dirty']}")
 
     t_load = time.perf_counter()
     model, snapshot = load_g_checkpoint(run_dir, device)
@@ -227,8 +229,8 @@ def main(argv=None) -> int:
         "checkpoint": os.path.abspath(ckpt),
         "checkpoint_sha1": sha1_file(ckpt),
         "train_git_sha": snapshot.get("git_sha"),
-        "git_sha": get_git_sha(),
-        "git_dirty": get_git_dirty(),
+        "git_sha": git["git_sha"],
+        "git_dirty": git["git_dirty"],
         "device": device,
         "device_name": get_device_name(),
         "precision": precision,

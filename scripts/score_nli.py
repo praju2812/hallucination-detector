@@ -360,7 +360,7 @@ def main(argv=None) -> int:
     import transformers
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-    from src.train import get_device, get_device_name, get_git_dirty, get_git_sha
+    from src.train import get_device, get_device_name, git_state
 
     args = parse_args(argv)
     splits = [s.strip() for s in args.splits.split(",") if s.strip()]
@@ -375,8 +375,10 @@ def main(argv=None) -> int:
         return 1
     include_question = HYPOTHESIS_FORMATS[args.hypothesis]
     device = args.device or get_device()
+    # git read once, before predictions.jsonl is (over)written; scoring.json records this reading
+    git = git_state()
     print(f"model {args.model}  hypothesis={args.hypothesis}  device {device} ({get_device_name()})  "
-          f"git {get_git_sha()} dirty={get_git_dirty()}")
+          f"git {git['git_sha']} dirty={git['git_dirty']}")
 
     t_load = time.perf_counter()
     tokenizer = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
@@ -451,8 +453,8 @@ def main(argv=None) -> int:
         "precision": {"param_dtype": str(param.dtype), "autocast": False},
         "torch_version": torch.__version__,
         "transformers_version": transformers.__version__,
-        "git_sha": get_git_sha(),
-        "git_dirty": get_git_dirty(),
+        "git_sha": git["git_sha"],
+        "git_dirty": git["git_dirty"],
         "batch_size": args.batch_size,
         "limit": args.limit,
         "data_files": data_files,

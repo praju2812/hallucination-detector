@@ -83,6 +83,13 @@ def get_git_dirty() -> bool | None:
         return None
 
 
+def git_state() -> dict:
+    """{"git_sha", "git_dirty"} read now. Report and scoring scripts call this ONCE at the start of main(), before
+    writing anything, and record that one reading in every output: a script that rewrites a tracked output file and
+    reads `git status` afterwards would record dirty=True even from a clean checkout."""
+    return {"git_sha": get_git_sha(), "git_dirty": get_git_dirty()}
+
+
 def get_device_name() -> str:
     """GPU model (e.g. 'Tesla T4') so runs on different accelerators can be told apart."""
     if torch.cuda.is_available():
