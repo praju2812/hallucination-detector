@@ -48,3 +48,45 @@ def test_missing_query_col_in_config_fails(path):
 def test_sources_filter_still_works(path):
     ds = HallucinationDataset(path, CFG_DATA, sources=["halueval"])
     assert len(ds) == 1 and ds[0]["query"] == "boiling point"
+
+
+# ---- Phase 5: several files (G+C trains on unified_v2 train + clinical train.jsonl.gz) -------------
+
+def _clinical_gz(tmp_path):
+    from utils.io import write_jsonl
+    rows = [
+        {"query": "q-a", "context": "abstract a", "answer": "yes", "label": 0, "source": "ragbench_pubmedqa"},
+        {"query": "q-b", "context": "abstract b", "answer": "no", "label": 1, "source": "medhallu"},
+    ]
+    p = tmp_path / "clinical" / "train.jsonl.gz"
+    write_jsonl(rows, str(p))
+    return str(p)
+
+
+def test_list_of_paths_concatenates_in_order(path, tmp_path):
+    gz = _clinical_gz(tmp_path)
+    ds = HallucinationDataset([path, gz], CFG_DATA)
+    assert len(ds) == 4
+    assert [ds[i]["source"] for i in range(4)] == ["ragtruth", "halueval", "ragbench_pubmedqa", "medhallu"]
+    assert ds.rows[2]["context"] == "abstract a"          # .gz read like plain jsonl
+
+
+def test_list_order_is_kept(path, tmp_path):
+    gz = _clinical_gz(tmp_path)
+    ds = HallucinationDataset([gz, path], CFG_DATA)
+    assert [r["source"] for r in ds.rows] == ["ragbench_pubmedqa", "medhallu", "ragtruth", "halueval"]
+
+
+def test_single_path_string_unchanged(path):
+    assert HallucinationDataset(path, CFG_DATA).rows == HallucinationDataset([path], CFG_DATA).rows
+
+
+def test_sources_filter_applies_across_files(path, tmp_path):
+    gz = _clinical_gz(tmp_path)
+    ds = HallucinationDataset([path, gz], CFG_DATA, sources=["ragtruth", "medhallu"])
+    assert [r["source"] for r in ds.rows] == ["ragtruth", "medhallu"]
+
+
+def test_empty_path_list_fails():
+    with pytest.raises(ValueError):
+        HallucinationDataset([], CFG_DATA)
