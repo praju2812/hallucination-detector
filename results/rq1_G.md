@@ -77,7 +77,7 @@ Percentile bootstrap over group_id clusters, B = 2000, RNG seed 0, thresholds fi
 
 ## Selection check: full vs clean test
 
-Clean test drops rows that share a question or an 8+ word passage with clinical TRAIN (hard rule 6). G never saw clinical train, so a difference here reflects which rows were removed, not leakage.
+Clean test drops rows that share a question or an 8+ word passage with clinical TRAIN. G never saw clinical train, so a difference here reflects which rows were removed, not leakage.
 
 | source | seed | prevalence full | prevalence clean | PR-AUC full | PR-AUC clean | PR-AUC diff (clean - full) | AUROC full | AUROC clean | AUROC diff (clean - full) |
 |---|---|---|---|---|---|---|---|---|---|
