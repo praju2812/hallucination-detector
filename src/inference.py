@@ -25,6 +25,9 @@ from typing import Any, Callable
 
 import torch
 
+from scripts.score_nli import n_pairs, prepare_row, score_prepared
+from src.nli import STRIDE, MAX_LENGTH, HYP_CAP
+
 from src.encoding import INPUT_FORMAT, Collator, build_tokenizer, truncation_mode
 from src.metrics import probs_from_logits   # reuse: the sigmoid training used
 from src.train import EXPERIMENTS, get_device, select_sources_from_cfg
@@ -36,6 +39,9 @@ NLI_METRICS_PATH = "results/nli/DeBERTa-v3-large-mnli-fever-anli-ling-wanli/metr
 SERVE_MAX_LENGTH = 1024
 SERVE_RESP_MAX = 384
 SERVE_TRUNCATION = "fit_first"
+
+# pairs per forward pass within one request, as in the Phase 6 scoring run
+NLI_PAIR_BATCH = 16
 
 DISCLAIMER = ("Research prototype from an MSc dissertation. Not a medical device and not for clinical use: "
               "a score is a model estimate and can be wrong.")
@@ -195,9 +201,6 @@ def load_nli(device: str | None = None, model_name: str | None = None, revision:
                      threshold=nli_threshold_from_metrics(metrics_path),
                      model_id=f"{model_name}@{revision[:7]}", device=device)
 
-
-# ---- scoring (TEMPLATES: Prajakta writes the bodies) --------------------------------------------
-
 def score(question: str, context: str, response: str, detector: Detector, nli: NLIScorer | None = None) -> dict:
     """Score one request with the detector (and NLI when `nli` is given).
 
@@ -210,16 +213,33 @@ def score(question: str, context: str, response: str, detector: Detector, nli: N
         - prob = the same sigmoid as training; label 1 = hallucinated; same input -> same prob.
         - label follows the rule training used to compute F1 at the threshold.
     """
-    # TODO 1: encode the triple with the detector's collator (the training encoding; do not re-tokenise yourself).
-    # TODO 2: build input_ids and attention_mask tensors of shape [1, L] on detector.device.
-    # TODO 3: one forward pass with gradients off; turn the logit into a probability with the training helper.
-    # TODO 4: label from prob and detector.threshold.
-    # TODO 5: build the result dict with plain Python types; add the "nli" entry when nli is given (call score_nli).
-    # CHECK: empty / whitespace-only context or response must raise ValueError. Which existing function already does?
-    # CHECK: `>=` or `>`? Look at src/metrics.thresholded_metrics.
-    # CHECK: the logit comes back as a tensor on the device; the dict must hold a float, not a tensor or numpy type.
-    raise NotImplementedError
+    #  encode the triple with the detector's collator (the training encoding.
+    ids = detector.collator.encode_with_response_budget(question, context, response)
 
+    # build input_ids and attention_mask tensors of shape [1, L] on detector.device.
+    # batch of one: no padding, so the attention mask is all ones
+    input_ids = torch.tensor([ids], dtype=torch.long, device=detector.device)
+    attention_mask = torch.ones_like(input_ids)
+
+    # one forward pass, no gradients; the same sigmoid helper as training
+    with torch.inference_mode():
+        logits = detector.model(input_ids=input_ids, attention_mask=attention_mask)
+    prob = float(probs_from_logits(logits.float().cpu().numpy())[0])
+
+    # label 1 = hallucinated, the same >= rule training used for F1 at the threshold
+    label = int(prob >= detector.threshold)
+
+    #  build the result dict with plain Python types; add the "nli" entry when nli is given (call score_nli).
+    result = {
+        "prob": prob,
+        "label": label,
+        "threshold": detector.threshold,
+        "model_id": detector.model_id
+    }
+    if nli is not None:
+        result["nli"] = score_nli(question, context, response, nli)
+
+    return result
 
 def score_nli(question: str, context: str, response: str, nli: NLIScorer) -> dict:
     """Score one request with the Phase 6 NLI baseline, exactly as scripts/score_nli.py scores a test row.
@@ -233,10 +253,23 @@ def score_nli(question: str, context: str, response: str, nli: NLIScorer) -> dic
         - n_pairs = number of (window, sentence) pairs run through the model for this request.
     Reuse prepare_row, n_pairs and score_prepared from scripts/score_nli.py: import them, do not copy them.
     """
-    # TODO 1: build the row dict prepare_row expects (which keys does it read?).
-    # TODO 2: prepare it with the Phase 6 settings (hypothesis format "response" -> which include_question?).
-    # TODO 3: score the one prepared row; take its prob.
-    # TODO 4: label against nli.threshold with the same rule as the detector; build the result dict.
-    # CHECK: the question is not part of the hypothesis in the Phase 6 run; does the row still need a task key?
-    # CHECK: a whitespace-only response must raise ValueError (does split_response_sentences already?).
-    raise NotImplementedError
+    # build the row dict prepare_row expects
+    row = {"query": question, "context": context, "answer": response, "task": "qa"}
+
+    # prepare it with the Phase 6 settings (STRIDE, MAX_LENGTH, HYP_CAP, response-only hypothesis)
+    prepared = prepare_row(row, nli.builder, False, STRIDE, MAX_LENGTH, HYP_CAP)
+
+    # score the one prepared row; pairs within the row are batched as in Phase 6 (batch size 16)
+    results, _ = score_prepared([prepared], nli.model, nli.builder, nli.ent_idx, NLI_PAIR_BATCH, nli.device)
+    prob = float(results[0]["prob"])
+
+    # same >= rule as the detector; label 1 = hallucinated
+    label = int(prob >= nli.threshold)
+    return {
+        "prob": prob,
+        "label": label,
+        "threshold": nli.threshold,
+        "model_id": nli.model_id,
+        "n_pairs": n_pairs(prepared),
+    }
+    
