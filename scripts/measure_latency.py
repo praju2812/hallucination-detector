@@ -235,13 +235,25 @@ def time_requests(fn: Callable[[dict], dict], rows: list[dict], warmup: int, syn
         - fn is called len(rows) + warmup times; every row is timed exactly once.
         - after warm-up the call order is fn, sync, fn, sync, ...
     """
-    # TODO 1: validate warmup.
-    # TODO 2: warm-up calls (untimed, results discarded). Should they sync too?
-    # TODO 3: for each row: start the clock, call fn, sync, stop the clock; build the record.
-    # CHECK: which clock? It must be monotonic and high resolution (look at the time module).
-    # CHECK: nothing except fn and sync may happen between start and stop (no record building, no printing).
-    raise NotImplementedError
+    # validate warmup.
+    if warmup < 0 or warmup > len(rows):
+        raise ValueError(f"warmup must be between 0 and {len(rows)}, got {warmup}")
 
+    # warm-up: untimed calls on the first rows, results thrown away
+    for row in rows[:warmup]:
+        fn(row)
+        sync()
+
+    # every row timed exactly once, in order
+    records = []
+    for row in rows:
+        start = time.perf_counter()
+        result = fn(row)
+        sync()                                   # wait for GPU work before stopping the clock
+        seconds = time.perf_counter() - start
+        records.append({"row_key": row["row_key"], "source": row["source"], "task": row.get("task"),
+                        "seconds": seconds, "n_pairs": result.get("n_pairs")})
+    return records
 
 def latency_stats(seconds: list[float]) -> dict:
     """Summary of per-request latencies.
@@ -250,11 +262,23 @@ def latency_stats(seconds: list[float]) -> dict:
         throughput_rps = n / total_s (requests served one at a time at batch size 1). This is the qps of the cost formula.
     p95: P95_METHOD. Raises ValueError on an empty list. Plain Python floats / int in the dict.
     """
-    # TODO 1: validate; convert to a numpy array.
-    # TODO 2: compute each statistic.
-    # CHECK: numpy's default percentile interpolation is the stated method; [1, 2, 3, 4] -> p95 = 3.85.
-    raise NotImplementedError
+    # validate; convert to a numpy array.
+    if not seconds:
+        raise ValueError("latency_stats: empty seconds list")
 
+    # convert to a numpy array for the statistics.
+    seconds_arr = np.array(seconds, dtype=float)
+
+    # compute each statistic.
+    n = len(seconds_arr)
+    median_s = np.median(seconds_arr)
+    p95_s = np.percentile(seconds_arr, 95)
+    mean_s = np.mean(seconds_arr)
+    total_s = np.sum(seconds_arr)
+    throughput_rps = n / total_s if total_s > 0 else 0
+
+    return {"n": int(n), "median_s": float(median_s), "p95_s": float(p95_s),
+            "mean_s": float(mean_s), "total_s": float(total_s), "throughput_rps": float(throughput_rps)}
 
 def summarize_latency(records: list[dict]) -> dict:
     """Latency per source, per RAGTruth task and pooled.
@@ -264,33 +288,69 @@ def summarize_latency(records: list[dict]) -> dict:
              "per_task": {"ragtruth_qa": ..., "ragtruth_summary": ...}   (RAGTruth rows only),
              "p95_method": P95_METHOD}
     """
-    # TODO 1: pooled.
-    # TODO 2: group seconds by source.
-    # TODO 3: group RAGTruth seconds by task; key "ragtruth_<task>".
-    # CHECK: clinical rows also carry task "qa"; they must not appear under per_task.
-    raise NotImplementedError
+    # pooled
+    pooled_stats = latency_stats([r["seconds"] for r in records])
 
+    # group seconds by source.
+    per_source_stats = {}
+    for r in records:
+        source = r["source"]
+        per_source_stats.setdefault(source, []).append(r["seconds"])
+    per_source_stats = {source: latency_stats(seconds) for source, seconds in per_source_stats.items()}
+
+    # group RAGTruth seconds by task; key "ragtruth_<task>".
+    per_task = {}
+    for r in records:
+        if r["source"] == "ragtruth":
+            per_task.setdefault(f"ragtruth_{r['task']}", []).append(r["seconds"])
+    per_task_stats = {k: latency_stats(v) for k, v in per_task.items()}
+
+    return {
+        "pooled": pooled_stats,
+        "per_source": per_source_stats,
+        "per_task": per_task_stats,
+        "p95_method": P95_METHOD
+    }
 
 def cost_per_1000(price_per_hour: float, qps: float) -> float:
-    """Cost of 1,000 requests on one instance (AE-1 §3.6, Luna): price_per_hour / (qps * 3600) * 1000.
+    """Cost of 1,000 requests on one instance (Luna): price_per_hour / (qps * 3600) * 1000.
 
     qps = measured throughput at batch size 1 (latency_stats(...)["throughput_rps"]).
     Raises ValueError if qps <= 0 or price_per_hour < 0.
     """
-    # TODO 1: validate.
-    # TODO 2: requests per hour, then the formula.
-    raise NotImplementedError
-
+    # validate.
+    if qps <= 0:
+        raise ValueError(f"qps must be > 0, got {qps}")
+    if price_per_hour < 0:
+        raise ValueError(f"price_per_hour must be >= 0, got {price_per_hour}")
+    
+    #compute requests per hour, then the formula.
+    requests_per_hour = qps * 3600
+    cost = (price_per_hour / requests_per_hour) * 1000
+    return cost
 
 def monthly_cost(monthly_price: float, target_qps: float | None, qps_per_instance: float) -> float | None:
     """Monthly cost to serve `target_qps`: monthly_price * target_qps / qps_per_instance (AE-1 §3.6).
 
     Returns None when target_qps is None (no target given). Raises ValueError if qps_per_instance <= 0.
     """
-    # TODO 1: no target -> None.
-    # TODO 2: validate; the formula.
-    # CHECK: the formula allows fractional instances; say so where it is reported rather than rounding up here.
-    raise NotImplementedError
+    # no target -> None.
+    if target_qps is None:
+        return None
+    
+    # validate.
+    if qps_per_instance <= 0:
+        raise ValueError(f"qps_per_instance must be > 0, got {qps_per_instance}")
+
+    if target_qps < 0:
+        raise ValueError(f"target_qps must be >= 0, got {target_qps}")
+    
+    if monthly_price < 0:
+        raise ValueError(f"monthly_price must be >= 0, got {monthly_price}")
+
+    # valid formula: monthly_price * target_qps / qps_per_instance.
+    cost = monthly_price * target_qps / qps_per_instance
+    return cost
 
 
 # ---- CLI (plumbing) -----------------------------------------------------------------------------
