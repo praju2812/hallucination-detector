@@ -83,6 +83,13 @@ def get_git_dirty() -> bool | None:
         return None
 
 
+def git_state() -> dict:
+    """{"git_sha", "git_dirty"} read now. Report and scoring scripts call this ONCE at the start of main(), before
+    writing anything, and record that one reading in every output: a script that rewrites a tracked output file and
+    reads `git status` afterwards would record dirty=True even from a clean checkout."""
+    return {"git_sha": get_git_sha(), "git_dirty": get_git_dirty()}
+
+
 def get_device_name() -> str:
     """GPU model (e.g. 'Tesla T4') so runs on different accelerators can be told apart."""
     if torch.cuda.is_available():
@@ -135,6 +142,179 @@ def build_run_snapshot(cfg: dict) -> dict:
     }
 
 
+# ---- Phase 5 (RQ2): config readers and run records (plumbing) -----------------------------------
+
+DEFAULT_SELECT_SOURCES = ["ragtruth"]   # G: model selection and threshold on RAGTruth validation rows (hard rule 4)
+
+
+def select_sources_from_cfg(cfg: dict) -> list[str]:
+    """Validation sources whose rows (pooled) drive model selection and the threshold.
+    G has no train.select_sources key, so it keeps ["ragtruth"]; C and G+C list the two RAGBench sources."""
+    src = cfg["train"].get("select_sources", DEFAULT_SELECT_SOURCES)
+    if not isinstance(src, list) or not src or not all(isinstance(s, str) and s for s in src):
+        raise ValueError(f"train.select_sources must be a non-empty list of source names, got {src!r}")
+    return list(src)
+
+
+def named_test_sets(cfg_data: dict) -> dict:
+    """{set name: path or list of paths}, in config order.
+    data.test_sets (C, G+C) or, for G, data.test_path as {"test": path}. Exactly one of the two keys may be set."""
+    has_sets, has_path = "test_sets" in cfg_data, bool(cfg_data.get("test_path"))
+    if has_sets and has_path:
+        raise ValueError("config has both data.test_sets and data.test_path; use one")
+    if not has_sets and not has_path:
+        raise ValueError("config has neither data.test_sets nor data.test_path")
+    if has_path:
+        return {"test": cfg_data["test_path"]}
+    sets = cfg_data["test_sets"]
+    if not isinstance(sets, dict) or not sets:
+        raise ValueError(f"data.test_sets must be a non-empty mapping of set name -> path, got {sets!r}")
+    return dict(sets)
+
+
+def resolved_training_values(cfg: dict, n_train_rows: int, steps_per_epoch: int) -> dict:
+    """The numbers the run actually trains with, for config_snapshot.json["resolved"].
+
+    pos_weight is a FIXED value: cfg train.pos_weight goes straight to build_loss, whatever the data.
+    Warmup is a RULE: int(warmup_ratio * total_steps), the same expression as build_optimizer_and_scheduler,
+    so the step count scales with the training-set size (G 375, C 556, G+C 931 with base.yaml)."""
+    t = cfg["train"]
+    total = steps_per_epoch * t["epochs"]
+    return {
+        "n_train_rows": int(n_train_rows),
+        "steps_per_epoch": int(steps_per_epoch),
+        "epochs": t["epochs"],
+        "total_steps": int(total),
+        "warmup_ratio": t["warmup_ratio"],
+        "warmup_steps": int(t["warmup_ratio"] * total),
+        "warmup_rule": "int(warmup_ratio * steps_per_epoch * epochs): scales with the training-set size",
+        "pos_weight": t["pos_weight"],
+        "pos_weight_rule": "fixed value from the config (train.pos_weight), not recomputed from the data",
+    }
+
+
+def build_metrics_summary(thr: float, select_sources: list[str], per_test_set: dict, merged: dict, cfg: dict) -> dict:
+    """Contents of metrics.json.
+
+    One test set named "test" (G): exactly the pre-Phase 5 shape {threshold, overall, per_source, git_sha, seed}.
+    Several sets (C, G+C): {threshold, threshold_tuned_on, per_source, per_test_set, git_sha, seed}, where
+    per_source = merge_per_source(per_test_set) (what scripts/mvp_check.py M4 reads) and per_test_set keeps each
+    set's own overall + per_source blocks."""
+    if list(per_test_set) == ["test"]:
+        return {
+            "threshold": thr,
+            "overall": per_test_set["test"]["overall"],
+            "per_source": merged,
+            "git_sha": get_git_sha(),
+            "seed": cfg["train"]["seed"],
+        }
+    return {
+        "threshold": thr,
+        "threshold_tuned_on": list(select_sources),
+        "per_source": merged,
+        "per_test_set": per_test_set,
+        "git_sha": get_git_sha(),
+        "seed": cfg["train"]["seed"],
+    }
+
+def selection_mask(sources: list[str], labels: np.ndarray, select_sources: list[str]) -> np.ndarray:
+    """T1. Boolean mask of the validation rows used for model selection AND threshold tuning.
+
+    Inputs:
+        sources: source name of every validation row, in evaluate() order (length n). evaluate() returns a list.
+        labels: the matching labels as evaluate() returns them (float 0.0 / 1.0 array, length n).
+        select_sources: the names to pool, from select_sources_from_cfg(cfg):
+                        ["ragtruth"] for G, ["ragbench_pubmedqa", "ragbench_covidqa"] for C and G+C.
+    Output:
+        np.ndarray, dtype bool, length n: True where the row's source is in select_sources.
+    Invariants:
+        - "pooled": the rows of all listed sources form ONE set (one PR-AUC, one F1 grid), not a per-source average.
+        - rows of every other source (MedHallu, HaluEval, ...) are False. They are still scored and written to
+          predictions.jsonl by the caller, just never used here.
+    Raises ValueError when:
+        - no row is selected;
+        - a name in select_sources has no row at all (a typo must not silently select on the other source alone);
+        - the selected rows contain no positive (PR-AUC is undefined and best_threshold would return 0.05 silently).
+    """
+    #  build the mask (one bool per row)
+    mask = np.array([s in select_sources for s in sources], dtype=bool)
+    labels = np.asarray(labels)
+
+    #  find any name in select_sources that never occurs in sources; raise if there is one.
+    for s in select_sources:
+        if s not in sources:
+            raise ValueError(f"selection_mask: source {s!r} from select_sources has no row in sources")
+        
+    #  raise if the mask selects nothing, or selects no positive row.
+    if not np.any(mask):
+        raise ValueError("selection_mask: no row is selected")
+    if not np.any(mask & (labels == 1)):
+        raise ValueError("selection_mask: the selected rows contain no positive")
+
+    return mask
+
+
+def evaluate_test_sets(model, test_loaders: dict, thr: float, cfg: dict, device: str) -> tuple[dict, list[dict]]:
+    """T2. Score every test set with the (already loaded) best checkpoint at ONE threshold.
+
+    Inputs:
+        model: the best checkpoint, already loaded (evaluate() puts it in eval mode).
+        test_loaders: {set name: unshuffled loader}, in config order. G: {"test": loader};
+                      C and G+C: {"test": general test, "test_full": clinical test_full}.
+        thr: the threshold tuned on the selection rows of VALIDATION (never on test, hard rule 4).
+        cfg: the full config (prediction_records needs cfg["data"]).
+        device: "cuda", "mps" or "cpu".
+    Output: (per_test_set, records)
+        per_test_set: {set name: {"overall": {...}, "per_source": {...}}}, same names and order as test_loaders.
+            "overall"    = ranking_metrics updated with thresholded_metrics at thr (today's "TEST:" dict);
+            "per_source" = per_source_breakdown at thr (includes n and n_pos).
+        records: prediction_records for every set, split = the set name, sets in loader order.
+    Invariants:
+        - every set uses the same thr;
+        - per set, one record per row, idx = position in that set's rows (prediction_records checks the labels).
+    Reuse evaluate, ranking_metrics, thresholded_metrics, per_source_breakdown and prediction_records; do not rewrite them.
+    """
+    # go through the loaders in order.
+    per_test_set = {}
+    records = []
+
+    # for each set: labels, probs and sources from the model; its prediction records.
+    for set_name, loader in test_loaders.items():
+        labels, probs, sources = evaluate(model, loader, device)
+        records.extend(prediction_records(set_name, loader.dataset.rows, labels, probs, cfg["data"]))
+
+        # compute the overall metrics (ranking + thresholded) and per-source breakdown at the given threshold.
+        overall = ranking_metrics(labels, probs)
+        overall.update(thresholded_metrics(labels, probs, thr))
+        per_source = per_source_breakdown(labels, probs, sources, thr)
+        print(f"TEST {set_name}:", {k: round(v, 4) for k, v in overall.items()})
+
+        # store the results in the per_test_set dictionary.
+        per_test_set[set_name] = {"overall": overall, "per_source": per_source}
+
+    return per_test_set, records
+    
+def merge_per_source(per_test_set: dict) -> dict:
+    """T3. One per-source block across all test sets, for metrics.json["per_source"].
+
+    Input:  per_test_set as returned by evaluate_test_sets: {set name: {"overall": ..., "per_source": {src: {...}}}}.
+    Output: a NEW dict {source: metrics}: sets in order, sources in their order within each set.
+    Why:    scripts/mvp_check.py (M4) and scripts/summarize_runs.py read the top-level per_source block.
+    Raises ValueError if a source appears in more than one set (e.g. a clinical source in both test_full and a clean set):
+    the top-level block must never silently take one set's numbers over another's.
+    per_test_set itself is not modified.
+    """
+    merged, seen_in = {}, {}
+
+    # walk the sets in order and collect each set's per-source entries.
+    for set_name, set_data in per_test_set.items():
+        for source_name, metrics in set_data.get("per_source", {}).items():
+            if source_name in merged:
+                raise ValueError(f"source {source_name!r} appears in both {seen_in[source_name]!r} and {set_name!r}")
+            merged[source_name] = dict(metrics)
+            seen_in[source_name] = set_name
+    return merged
+
 def prediction_records(split: str, rows: list[dict], labels, probs, cfg_data: dict) -> list[dict]:
     """One record per row for predictions.jsonl: split, idx, source, task, group_id, label, prob.
 
@@ -161,7 +341,7 @@ def prediction_records(split: str, rows: list[dict], labels, probs, cfg_data: di
     return out
 
 
-def make_loader(path: str, cfg: dict, tokenizer, shuffle: bool,
+def make_loader(path: str | list[str], cfg: dict, tokenizer, shuffle: bool,
                 generator: torch.Generator | None = None, sources: list | None = None) -> DataLoader:
     ds = HallucinationDataset(path, cfg["data"], sources=sources)
     collate = Collator(tokenizer, cfg["model"]["max_length"], cfg["model"]["resp_max"], truncation_mode(cfg["model"]))
@@ -230,7 +410,7 @@ def evaluate(model, loader, device):
         # extend the three lists with labels, probs, and batch["sources"].
         all_labels.extend(labels.cpu().numpy())
         all_probs.extend(probs)
-        all_sources.extend(batch["sources"])    
+        all_sources.extend(batch["sources"])
     return np.array(all_labels), np.array(all_probs), all_sources
 
 def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scaler) -> None:
@@ -284,7 +464,7 @@ def train_one_epoch(model, loader, loss_fn, optim, scheduler, cfg, device, scale
 
 def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epoch, run_dir):
     """
-    Score the ragtruth validation set
+    selection rows (RAGTruth for G, pooled RAGBench for C and G+C)
     save the checkpoint if it's the best so far.
     """
 
@@ -293,17 +473,14 @@ def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epo
     # extract the labels, probabilities, and sources from the evaluation results.
     labels, probs, sources = evaluate(model, val_loader, device)
 
-    # filter the data to only ragtruth sources since ragtruth is the main source of hallucination data. 
-    
-    # boolean mask that is True for ragtruth sources and False otherwise.
-    ragtruth_mask = np.array([s == "ragtruth" for s in sources])
+    # get the selection sources with select_sources_from_cfg(cfg) (["ragtruth"] for G).
+    select = select_sources_from_cfg(cfg)
 
-    if ragtruth_mask.sum() == 0: 
-        raise ValueError("no ragtruth rows in validation")
+    # selection rows only; selection_mask raises if none are selected or none are positive
+    mask = selection_mask(sources, labels, select)
 
-    # apply the mask to the labels and probabilities since index is same for labels, probs and sources.
-    labels = labels[ragtruth_mask]
-    probs = probs[ragtruth_mask]
+    # apply the mask to the labels and probabilities to only keep the selected rows.
+    labels, probs = labels[mask], probs[mask]
 
     # rank the metrics using the ranking_metrics function, which computes PR-AUC and ROC-AUC.
     val = ranking_metrics(labels, probs)
@@ -317,8 +494,8 @@ def validate_and_save_best_model(cfg, device, val_loader, model, best_score, epo
 
     return best_score, val
 
-def evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir) -> None:
-    """Reload the best checkpoint, pick a threshold on val, report on test."""
+def evaluate_on_test(model, val_loader, test_loaders, cfg, device, run_dir) -> None:
+    """Reload the best checkpoint, pick a threshold on the validation selection rows, report on every test set."""
 
     # get the best checkpoint from the output directory and load it into the model.
     best_path = os.path.join(run_dir, "best.pt")
@@ -326,43 +503,34 @@ def evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir) -> No
 
     # evaluate the model on the validation set to get the labels and probabilities
     v_labels, v_probs, v_sources = evaluate(model, val_loader, device)
-    # all val rows (every source), before the RAGTruth mask below
+
+    # all val rows (every source), before the selection mask below
     val_records = prediction_records("val", val_loader.dataset.rows, v_labels, v_probs, cfg["data"])
 
-    # filter the data to only ragtruth sources since ragtruth is the main source of hallucination data.
-    ragtruth_mask = np.array([s == "ragtruth" for s in v_sources])
+    # T1 selection_mask with select_sources_from_cfg(cfg), as in validate_and_save_best_model
+    select = select_sources_from_cfg(cfg)
 
-    if ragtruth_mask.sum() == 0: 
-        raise ValueError("no ragtruth rows in validation")
-    
-    v_labels = v_labels[ragtruth_mask]
-    v_probs = v_probs[ragtruth_mask]
+    mask = selection_mask(v_sources, v_labels, select)
 
-    # find the best threshold on the validation set of ragtruth data that maximizes the F1 score.
+    v_labels, v_probs = v_labels[mask], v_probs[mask]
+
+    # threshold that maximises F1 on the selection rows of validation (never on test)
     thr = best_threshold(v_labels, v_probs)
 
-    # evaluate the model on the test set to get the labels and probabilities and sources.
-    t_labels, t_probs, t_sources = evaluate(model, test_loader, device)
+    print(f"best threshold on val selection rows: {thr:.4f}")
 
-    # per-row predictions for post-hoc analyses (truncated vs untruncated rows)
-    test_records = prediction_records("test", test_loader.dataset.rows, t_labels, t_probs, cfg["data"])
+    # evaluate the model on each test set and get the overall metrics and per-source breakdown at the best threshold.    
+    per_test_set, test_records = evaluate_test_sets(model, test_loaders, thr, cfg, device)
+
+    # merge the per-source breakdowns from all test sets into a single dictionary.
+    merged = merge_per_source(per_test_set)
+
+    # build a summary of the metrics for the output JSON file, including the best threshold, selection sources, per-test-set metrics, and merged per-source metrics.
+    summary = build_metrics_summary(thr, select, per_test_set, merged, cfg)
+
+    # write the predictions for both validation and test sets to a JSONL file in the output directory.
     write_jsonl(val_records + test_records, os.path.join(run_dir, "predictions.jsonl"))
 
-    # compute the ranking metrics (PR-AUC and ROC-AUC) and thresholded metrics (precision, recall, F1) at the chosen threshold on the test set.
-    test = ranking_metrics(t_labels, t_probs)
-    test.update(thresholded_metrics(t_labels, t_probs, thr))
-    print("TEST:", {k: round(v, 4) for k, v in test.items()})
-
-    # calling per_source_breakdown on test set to get metrics for each source (e.g., ragtruth, halueval, etc.) at the best threshold.
-    per_source = per_source_breakdown(t_labels, t_probs, t_sources, thr)
-    
-    summary = {
-    "threshold": thr,
-    "overall": test,
-    "per_source": per_source,
-    "git_sha": get_git_sha(),
-    "seed": cfg["train"]["seed"],
-    }
     with open(os.path.join(run_dir, "metrics.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -377,22 +545,28 @@ def train(cfg: dict) -> None:
     device = get_device()
     print(f"device: {device} ({get_device_name()})")
 
-    # built before the run dir, so a bad `experiment` fails without leaving an empty folder
+    # built before the run dir, so a bad `experiment`, test-set or selection config fails without leaving an empty folder
     snapshot = build_run_snapshot(cfg)
+    test_sets = named_test_sets(cfg["data"])
+    print(f"selection + threshold on validation rows of: {select_sources_from_cfg(cfg)}")
     run_dir = make_run_dir(cfg)
     print(f"run_dir: {run_dir}")
 
-    # snapshot the exact config, git SHA, experiment, input format and versions that produced this run
+    tokenizer = build_tokenizer(cfg["model"]["name"])
+    gen = torch.Generator().manual_seed(cfg["train"]["seed"])  # reproducible shuffle
+
+    # train_path / val_path: one file, or a list concatenated in order (G+C trains on general + clinical)
+    train_loader = make_loader(cfg["data"]["train_path"], cfg, tokenizer, shuffle=True, generator=gen, sources=cfg["train"].get("train_sources"))
+    val_loader = make_loader(cfg["data"]["val_path"], cfg, tokenizer, shuffle=False)
+    test_loaders = {name: make_loader(path, cfg, tokenizer, shuffle=False) for name, path in test_sets.items()}
+
+    # snapshot the exact config, git SHA, experiment, input format, versions, and the resolved warmup steps and
+    # pos_weight that produced this run (written once the training-set size is known)
+    snapshot["resolved"] = resolved_training_values(cfg, len(train_loader.dataset), len(train_loader))
+    print("resolved:", {k: v for k, v in snapshot["resolved"].items() if not k.endswith("_rule")})
     with open(os.path.join(run_dir, "config_snapshot.json"), "w") as f:
         json.dump(snapshot, f, indent=2)
 
-    tokenizer = build_tokenizer(cfg["model"]["name"])
-    gen = torch.Generator().manual_seed(cfg["train"]["seed"])  # reproducible shuffle
-   
-    train_loader = make_loader(cfg["data"]["train_path"], cfg, tokenizer, shuffle=True, generator=gen, sources=cfg["train"].get("train_sources"))
-    val_loader = make_loader(cfg["data"]["val_path"], cfg, tokenizer, shuffle=False)
-    test_loader = make_loader(cfg["data"]["test_path"], cfg, tokenizer, shuffle=False)
- 
     model = HallucinationDetector(cfg["model"]["name"], cfg["model"]["dropout"]).to(device)
     loss_fn = build_loss(cfg["train"]["pos_weight"]).to(device)
     optim, scheduler = build_optimizer_and_scheduler(model, cfg, steps_per_epoch=len(train_loader))
@@ -408,7 +582,7 @@ def train(cfg: dict) -> None:
     with open(os.path.join(run_dir, "val_history.json"), "w") as f:
         json.dump(val_history, f, indent=2)
         
-    evaluate_on_test(model, val_loader, test_loader, cfg, device, run_dir)
+    evaluate_on_test(model, val_loader, test_loaders, cfg, device, run_dir)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -36,7 +36,7 @@ from src.rq1 import (
     subset_metrics,
     tune_clinical_thresholds,
 )
-from src.train import get_git_dirty, get_git_sha
+from src.train import git_state
 from utils.io import read_jsonl
 
 SOURCES = ["ragbench_pubmedqa", "ragbench_covidqa", "medhallu"]
@@ -106,7 +106,10 @@ def scoring_truncation(scoring: dict, run: str) -> str:
     return scoring["truncation"]
 
 
-def compute_seed_metrics(seed_data: dict, clean_rows: list[dict], n_boot: int = 2000, boot_seed: int = 0) -> dict:
+def compute_seed_metrics(seed_data: dict, clean_rows: list[dict], n_boot: int = 2000, boot_seed: int = 0, *,
+                         report_git: dict) -> dict:
+    """report_git = {"report_git_sha", "report_git_dirty"}, read once by the caller before anything is written
+    (reading it here, per seed, recorded dirty=True for every seed after the first rewritten output)."""
     preds = seed_data["preds"]
     phase2 = seed_data["phase2"]
     thr_a = float(phase2["threshold"])
@@ -139,8 +142,8 @@ def compute_seed_metrics(seed_data: dict, clean_rows: list[dict], n_boot: int = 
                 "n_boot": n_boot, "seed": boot_seed, "n_groups": int(len(set(g))),
                 "ci": cluster_bootstrap_ci(y, p, g, fns, n_boot=n_boot, seed=boot_seed)}
     out["scoring"] = seed_data["scoring"]
-    out["report_git_sha"] = get_git_sha()
-    out["report_git_dirty"] = get_git_dirty()
+    out["report_git_sha"] = report_git["report_git_sha"]
+    out["report_git_dirty"] = report_git["report_git_dirty"]
     return out
 
 
@@ -364,6 +367,9 @@ def main(argv=None) -> int:
     ap.add_argument("--boot-seed", type=int, default=0)
     ap.add_argument("--allow-partial", action="store_true", help="accept --limit (smoke) predictions; never for reporting")
     args = ap.parse_args(argv)
+    # git read once, before any output is written; every seed records this one reading
+    g = git_state()
+    report_git = {"report_git_sha": g["git_sha"], "report_git_dirty": g["git_dirty"]}
 
     runs = find_scored_runs(args.rq1_root)
     if not runs:
@@ -377,7 +383,7 @@ def main(argv=None) -> int:
     all_m = []
     for sd in seeds:
         run = sd["run"]
-        m = compute_seed_metrics(sd, clean_rows, args.n_boot, args.boot_seed)
+        m = compute_seed_metrics(sd, clean_rows, args.n_boot, args.boot_seed, report_git=report_git)
         with open(os.path.join(sd["dir"], "metrics.json"), "w") as f:
             json.dump(m, f, indent=2)
         with open(os.path.join(args.rq1_root, f"{run}.json"), "w") as f:
