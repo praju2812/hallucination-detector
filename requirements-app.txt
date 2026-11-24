@@ -1,0 +1,2 @@
+-r requirements.txt
+gradio==6.32.0   # Phase 7 demo and API (app/app.py); not needed for training or Kaggle runs
