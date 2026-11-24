@@ -1,0 +1,114 @@
+{
+  "method": "g",
+  "model_id": "run_seed43_20261121_000845@266b0b3",
+  "threshold": 0.35,
+  "experiment": "G",
+  "run_dir": "runs/run_seed43_20261121_000845",
+  "tag": "m2-cpu",
+  "hardware": {
+    "device": "cpu",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpu_model": "Apple M2",
+    "logical_cores": 8,
+    "physical_cores": 8,
+    "performance_cores": 4,
+    "efficiency_cores": 4,
+    "memory_gb": 16.0,
+    "torch_threads": 4,
+    "torch_version": "2.15.0",
+    "transformers_version": "5.22.2",
+    "python_version": "3.12.13",
+    "gpu": null,
+    "kaggle": false
+  },
+  "startup_s": 5.831,
+  "sample": {
+    "path": "results/latency/sample_seed42.jsonl",
+    "sha1": "001a0cf245be82a6d0290cbbc33933f8b1d74415",
+    "n_rows": 400,
+    "seed": 42,
+    "strata": {
+      "ragtruth/qa": 50,
+      "ragtruth/summary": 50,
+      "ragbench_pubmedqa/None": 100,
+      "ragbench_covidqa/None": 100,
+      "medhallu/None": 100
+    },
+    "general_test": "data/unified_v2/test.jsonl",
+    "general_sha1": "058075f8fb65d233a5c5883a7f72eb73eb7bd966",
+    "clinical_test": "data/clinical/test.jsonl",
+    "clinical_sha1": "c6778ff2aa704499d6e38f4c8060605621078689"
+  },
+  "warmup": 10,
+  "batch_size": 1,
+  "timing": "full call text in -> result out, device sync before stop; load and warm-up excluded",
+  "summary": {
+    "pooled": {
+      "n": 400,
+      "median_s": 0.19183760392479599,
+      "p95_s": 0.3508410983718929,
+      "mean_s": 0.19878663811541628,
+      "total_s": 79.51465524616651,
+      "throughput_rps": 5.030519201292575
+    },
+    "per_source": {
+      "ragtruth": {
+        "n": 100,
+        "median_s": 0.19092150044161826,
+        "p95_s": 0.4244820192689076,
+        "mean_s": 0.21524557000258937,
+        "total_s": 21.524557000258937,
+        "throughput_rps": 4.645856358335134
+      },
+      "ragbench_pubmedqa": {
+        "n": 100,
+        "median_s": 0.23572391655761749,
+        "p95_s": 0.3565585129079409,
+        "mean_s": 0.24236531582660972,
+        "total_s": 24.236531582660973,
+        "throughput_rps": 4.12600291666902
+      },
+      "ragbench_covidqa": {
+        "n": 100,
+        "median_s": 0.22020252095535398,
+        "p95_s": 0.2836812351713888,
+        "mean_s": 0.20961409163894132,
+        "total_s": 20.961409163894132,
+        "throughput_rps": 4.770671628902185
+      },
+      "medhallu": {
+        "n": 100,
+        "median_s": 0.12274556257762015,
+        "p95_s": 0.18791459549684078,
+        "mean_s": 0.1279215749935247,
+        "total_s": 12.79215749935247,
+        "throughput_rps": 7.8172896171003154
+      }
+    },
+    "per_task": {
+      "ragtruth_qa": {
+        "n": 50,
+        "median_s": 0.16453752049710602,
+        "p95_s": 0.2784938768716529,
+        "mean_s": 0.1709536299109459,
+        "total_s": 8.547681495547295,
+        "throughput_rps": 5.8495394366351015
+      },
+      "ragtruth_summary": {
+        "n": 50,
+        "median_s": 0.2188904375070706,
+        "p95_s": 0.4255732791963965,
+        "mean_s": 0.25953751009423287,
+        "total_s": 12.976875504711643,
+        "throughput_rps": 3.8530076043224737
+      }
+    },
+    "p95_method": "numpy.percentile(q=95), linear interpolation"
+  },
+  "cost": null,
+  "git_sha": "743637d",
+  "git_dirty": false,
+  "created_utc": "2026-11-24T20:50:06+00:00",
+  "command": "python -m scripts.measure_latency --method g --device cpu --checkpoint ../Hallucination_detector/runs/run_seed43_20261121_000845/best.pt --tag m2-cpu"
+}
