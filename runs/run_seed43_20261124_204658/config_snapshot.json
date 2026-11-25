@@ -1,0 +1,65 @@
+{
+  "config": {
+    "experiment": "C",
+    "model": {
+      "name": "answerdotai/ModernBERT-base",
+      "max_length": 1024,
+      "dropout": 0.1,
+      "resp_max": 384,
+      "truncation": "fit_first"
+    },
+    "data": {
+      "train_path": "data/clinical/train.jsonl.gz",
+      "val_path": [
+        "data/clinical/val.jsonl",
+        "data/unified_v2/val.jsonl"
+      ],
+      "test_sets": {
+        "test": "data/unified_v2/test.jsonl",
+        "test_full": "data/clinical/test_full.jsonl"
+      },
+      "query_col": "query",
+      "context_col": "context",
+      "response_col": "answer",
+      "label_col": "label",
+      "dataset_col": "source"
+    },
+    "train": {
+      "epochs": 2,
+      "batch_size": 8,
+      "lr": 2e-05,
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.06,
+      "max_grad_norm": 1.0,
+      "pos_weight": 2.3,
+      "seed": 43,
+      "eval_every_epoch": true,
+      "select_on": "pr_auc",
+      "select_sources": [
+        "ragbench_pubmedqa",
+        "ragbench_covidqa"
+      ],
+      "out_dir": "/kaggle/working/runs"
+    }
+  },
+  "seed": 43,
+  "git_sha": "525c33c",
+  "git_dirty": false,
+  "experiment": "C",
+  "input_format": "Question: {query} Context: {context}",
+  "truncation": "fit_first",
+  "torch_version": "2.11.0+cu130",
+  "transformers_version": "5.22.2",
+  "device_name": "Tesla T4",
+  "resolved": {
+    "n_train_rows": 37114,
+    "steps_per_epoch": 4640,
+    "epochs": 2,
+    "total_steps": 9280,
+    "warmup_ratio": 0.06,
+    "warmup_steps": 556,
+    "warmup_rule": "int(warmup_ratio * steps_per_epoch * epochs): scales with the training-set size",
+    "pos_weight": 2.3,
+    "pos_weight_rule": "fixed value from the config (train.pos_weight), not recomputed from the data"
+  }
+}
